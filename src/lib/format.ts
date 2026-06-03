@@ -22,16 +22,3 @@ export function formatUSD(amount: number): string {
   return usdFormatter.format(amount);
 }
 
-export function pkrToUsd(pkr: number, rate = DEFAULT_PKR_TO_USD): number {
-  return pkr / rate;
-}
-
-export function formatDual(
-  pkr: number,
-  rate = DEFAULT_PKR_TO_USD
-): { pkr: string; usd: string } {
-  return {
-    pkr: formatPKR(pkr),
-    usd: formatUSD(pkrToUsd(pkr, rate)),
-  };
-}

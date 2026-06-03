@@ -322,23 +322,12 @@ export async function deletePurchase(purchaseId: string): Promise<{ error?: stri
 
 // ─── Inventory edits ──────────────────────────────────────────────────────────
 
-export async function updateSKUQuantity(skuId: string, quantity: number): Promise<{ error?: string }> {
-  try {
-    const client = await getSupabaseServerClient()
-    const { error } = await client.from('skus').update({ quantity }).eq('id', skuId)
-    if (error) throw error
-    await logAudit(client, 'sku_quantity_updated', 'skus', skuId, `Set quantity to ${quantity} for SKU ${skuId}`)
-    revalidatePath('/', 'layout')
-    return {}
-  } catch (e: any) {
-    return { error: e?.message || 'Failed to update quantity.' }
-  }
-}
-
 export async function updateSku(
   skuId: string,
   updates: { quantity?: number; lowStockBuffer?: number; avgCostPKR?: number; size?: string },
 ): Promise<{ error?: string }> {
+  if (updates.size !== undefined && !(SIZES as readonly string[]).includes(updates.size))
+    return { error: `Invalid size: ${updates.size}` }
   try {
     const client = await getSupabaseServerClient()
     const { error } = await client.from('skus').update({
@@ -448,8 +437,15 @@ export async function updateArticle(
   updates: { name?: string; collection_id?: string; image_url?: string | null },
 ): Promise<{ error?: string }> {
   try {
+    // Explicit field allowlist — only permitted columns reach the DB
+    const patch: { name?: string; collection_id?: string; image_url?: string | null } = {}
+    if (updates.name !== undefined)          patch.name          = updates.name
+    if (updates.collection_id !== undefined) patch.collection_id = updates.collection_id
+    if (updates.image_url !== undefined)     patch.image_url     = updates.image_url
+    if (Object.keys(patch).length === 0) return {}
+
     const client = await getSupabaseServerClient()
-    const { error } = await client.from('articles').update(updates).eq('id', articleId)
+    const { error } = await client.from('articles').update(patch).eq('id', articleId)
     if (error) throw error
     await logAudit(client, 'article_updated', 'articles', articleId, `Updated article ${articleId}`, updates as Record<string, unknown>)
     revalidatePath('/', 'layout')
