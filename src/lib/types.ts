@@ -12,33 +12,33 @@ export type Database = {
         Relationships: []
       }
       collections: {
-        Row:    { id: string; name: string; brand_id: string }
-        Insert: { id?: string; name: string; brand_id: string }
-        Update: { id?: string; name?: string; brand_id?: string }
+        Row:    { id: string; name: string; brand_id: string; tenant_id: string }
+        Insert: { id?: string; name: string; brand_id: string; tenant_id?: string }
+        Update: { id?: string; name?: string; brand_id?: string; tenant_id?: string }
         Relationships: [{ foreignKeyName: 'collections_brand_id_fkey'; columns: ['brand_id']; referencedRelation: 'brands'; referencedColumns: ['id'] }]
       }
       articles: {
-        Row:    { id: string; name: string; collection_id: string; image_url: string | null }
-        Insert: { id?: string; name: string; collection_id: string; image_url?: string | null }
-        Update: { id?: string; name?: string; collection_id?: string; image_url?: string | null }
+        Row:    { id: string; name: string; collection_id: string; image_url: string | null; tenant_id: string }
+        Insert: { id?: string; name: string; collection_id: string; image_url?: string | null; tenant_id?: string }
+        Update: { id?: string; name?: string; collection_id?: string; image_url?: string | null; tenant_id?: string }
         Relationships: [{ foreignKeyName: 'articles_collection_id_fkey'; columns: ['collection_id']; referencedRelation: 'collections'; referencedColumns: ['id'] }]
       }
       skus: {
-        Row:    { id: string; article_id: string; size: string; quantity: number; low_stock_buffer: number; avg_cost_pkr: number; avg_exchange_rate: number }
-        Insert: { id?: string; article_id: string; size: string; quantity?: number; low_stock_buffer?: number; avg_cost_pkr?: number; avg_exchange_rate?: number }
-        Update: { id?: string; article_id?: string; size?: string; quantity?: number; low_stock_buffer?: number; avg_cost_pkr?: number; avg_exchange_rate?: number }
+        Row:    { id: string; article_id: string; size: string; quantity: number; low_stock_buffer: number; avg_cost_pkr: number; avg_exchange_rate: number; tenant_id: string }
+        Insert: { id?: string; article_id: string; size: string; quantity?: number; low_stock_buffer?: number; avg_cost_pkr?: number; avg_exchange_rate?: number; tenant_id?: string }
+        Update: { id?: string; article_id?: string; size?: string; quantity?: number; low_stock_buffer?: number; avg_cost_pkr?: number; avg_exchange_rate?: number; tenant_id?: string }
         Relationships: [{ foreignKeyName: 'skus_article_id_fkey'; columns: ['article_id']; referencedRelation: 'articles'; referencedColumns: ['id'] }]
       }
       purchases: {
-        Row:    { id: string; created_at: string; sku_id: string; quantity: number; cost_pkr: number; commission_pkr: number; shipping_pkr: number; exchange_rate: number; source: string | null; notes: string | null; paid_to_wajid: boolean }
-        Insert: { id?: string; created_at?: string; sku_id: string; quantity: number; cost_pkr: number; commission_pkr?: number; shipping_pkr?: number; exchange_rate: number; source?: string | null; notes?: string | null; paid_to_wajid?: boolean }
-        Update: { id?: string; created_at?: string; sku_id?: string; quantity?: number; cost_pkr?: number; commission_pkr?: number; shipping_pkr?: number; exchange_rate?: number; source?: string | null; notes?: string | null; paid_to_wajid?: boolean }
+        Row:    { id: string; created_at: string; sku_id: string; quantity: number; cost_pkr: number; commission_pkr: number; shipping_pkr: number; exchange_rate: number; source: string | null; notes: string | null; paid_to_wajid: boolean; tenant_id: string }
+        Insert: { id?: string; created_at?: string; sku_id: string; quantity: number; cost_pkr: number; commission_pkr?: number; shipping_pkr?: number; exchange_rate: number; source?: string | null; notes?: string | null; paid_to_wajid?: boolean; tenant_id?: string }
+        Update: { id?: string; created_at?: string; sku_id?: string; quantity?: number; cost_pkr?: number; commission_pkr?: number; shipping_pkr?: number; exchange_rate?: number; source?: string | null; notes?: string | null; paid_to_wajid?: boolean; tenant_id?: string }
         Relationships: [{ foreignKeyName: 'purchases_sku_id_fkey'; columns: ['sku_id']; referencedRelation: 'skus'; referencedColumns: ['id'] }]
       }
       sales: {
-        Row:    { id: string; created_at: string; sku_id: string; quantity: number; selling_price: number; cost_pkr_at_sale: number | null; exchange_rate_at_sale: number | null; channel: string | null; client_name: string | null; payment_method: string | null }
-        Insert: { id?: string; created_at?: string; sku_id: string; quantity: number; selling_price: number; cost_pkr_at_sale?: number | null; exchange_rate_at_sale?: number | null; channel?: string | null; client_name?: string | null; payment_method?: string | null }
-        Update: { id?: string; created_at?: string; sku_id?: string; quantity?: number; selling_price?: number; cost_pkr_at_sale?: number | null; exchange_rate_at_sale?: number | null; channel?: string | null; client_name?: string | null; payment_method?: string | null }
+        Row:    { id: string; created_at: string; sku_id: string; quantity: number; selling_price: number; cost_pkr_at_sale: number | null; exchange_rate_at_sale: number | null; channel: string | null; client_name: string | null; payment_method: string | null; tenant_id: string }
+        Insert: { id?: string; created_at?: string; sku_id: string; quantity: number; selling_price: number; cost_pkr_at_sale?: number | null; exchange_rate_at_sale?: number | null; channel?: string | null; client_name?: string | null; payment_method?: string | null; tenant_id?: string }
+        Update: { id?: string; created_at?: string; sku_id?: string; quantity?: number; selling_price?: number; cost_pkr_at_sale?: number | null; exchange_rate_at_sale?: number | null; channel?: string | null; client_name?: string | null; payment_method?: string | null; tenant_id?: string }
         Relationships: [{ foreignKeyName: 'sales_sku_id_fkey'; columns: ['sku_id']; referencedRelation: 'skus'; referencedColumns: ['id'] }]
       }
       settings: {
@@ -80,10 +80,6 @@ export type Database = {
       }
       stock_in_sku: {
         Args: { p_sku_id: string; p_quantity: number; p_total_cost_per_unit: number; p_exchange_rate: number }
-        Returns: undefined
-      }
-      set_tenant_id: {
-        Args: { p_tenant_id: string }
         Returns: undefined
       }
     }
@@ -144,9 +140,6 @@ export interface SaleRow {
   articleName: string
   brandName: string
 }
-
-/** Alias kept for import compatibility. */
-export type SaleWithDetails = SaleRow
 
 export interface PurchaseRow {
   id: string

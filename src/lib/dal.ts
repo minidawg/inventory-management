@@ -1,4 +1,5 @@
 import 'server-only'
+import { cache } from 'react'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getSupabaseServerClient } from '@/lib/supabase/server'
@@ -30,7 +31,24 @@ export async function requireAuth() {
 
 // ─── Settings ────────────────────────────────────────────────────────────────
 
-export async function getExchangeRate(): Promise<number> {
+// Wrapped in React.cache — deduplicates across layout + page within a single render.
+export const getExchangeRate = cache(async (): Promise<number> => {
+  const client = await getSupabaseServerClient()
+
+  // 1. Read current DB value first (always needed as fallback)
+  let dbRate: number | null = null
+  try {
+    const { data } = await client
+      .from('settings')
+      .select('value')
+      .eq('key', 'usd_rate')
+      .maybeSingle()
+    dbRate = Number(data?.value) || null
+  } catch (error) {
+    console.error('[getExchangeRate] DB read failed:', error)
+  }
+
+  // 2. Try external API (cached by Next.js for 24h)
   const apiKey = process.env.EXCHANGE_RATE_API_KEY
   if (apiKey) {
     try {
@@ -42,31 +60,23 @@ export async function getExchangeRate(): Promise<number> {
         const json = await res.json()
         const rate = json?.conversion_rates?.PKR
         if (typeof rate === 'number' && rate > 0) {
-          const client = await getSupabaseServerClient()
-          await client
-            .from('settings')
-            .upsert({ key: 'usd_rate', value: String(Math.round(rate)) }, { onConflict: 'tenant_id,key' })
+          // Only write to DB if the rounded value actually changed
+          const rounded = Math.round(rate)
+          if (dbRate !== rounded) {
+            await client
+              .from('settings')
+              .upsert({ key: 'usd_rate', value: String(rounded) }, { onConflict: 'tenant_id,key' })
+          }
           return rate
         }
       }
     } catch (error) {
       console.error('[getExchangeRate] API fetch failed:', error)
-      // fall through to DB
     }
   }
-  try {
-    const client = await getSupabaseServerClient()
-    const { data } = await client
-      .from('settings')
-      .select('value')
-      .eq('key', 'usd_rate')
-      .maybeSingle()
-    return Number(data?.value) || DEFAULT_PKR_TO_USD
-  } catch (error) {
-    console.error('[getExchangeRate] DB fallback failed:', error)
-    return DEFAULT_PKR_TO_USD
-  }
-}
+
+  return dbRate ?? DEFAULT_PKR_TO_USD
+})
 
 export async function getSettings(): Promise<{ lowStockAlerts: boolean; usdRate: number }> {
   try {

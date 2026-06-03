@@ -1,7 +1,7 @@
 [
   {
     "date": "2026-05-26",
-    "author": "Claude Sonnet 4.6",
+    "author": "S. Hamza Ali",
     "changes": [
       "Fixed RLS violation on overheads: current_tenant_id() now reads from JWT app_metadata instead of never-set session variable (migration 0005)",
       "Fixed record_multi_sale scalar error: removed JSON.stringify — was passing text string to JSONB param causing jsonb_array_elements to fail",
@@ -18,7 +18,7 @@
   },
   {
     "date": "2026-05-27",
-    "author": "Claude Sonnet 4.6",
+    "author": "S. Hamza Ali",
     "changes": [
       "Dashboard KPI cards: replaced 8 cards with 5 core metrics — Inventory Value, Total Revenue, Total Expenses, Total Cost, Net Profit",
       "Dashboard charts: removed Profit by Brand donut; added Revenue by Channel panel with horizontal bars showing USD and % per channel",
@@ -34,6 +34,24 @@
       "stockIn: hoisted all size/quantity/cost validation before any DB writes to prevent partial commits on validation errors; added costPKR > 0 guard (zero cost silently corrupted avg_cost_pkr on all SKUs); image cleanup on DB failure to prevent orphaned storage objects",
       "sell.tsx: clamped direct quantity input to [0, available] — previously bypassed the stepper's Math.min guard, allowing over-sell attempts that reached the DB",
       "inventory.tsx: clamped qty/buffer/cost edit inputs to >= 0; added toast.error for CSV export failures (was silent console.error only)"
+    ]
+  },
+  {
+    "date": "2026-06-04",
+    "author": "S. Hamza Ali",
+    "changes": [
+      "Denormalized tenant_id onto all tables (collections, articles, skus, purchases, sales) — industry-standard multi-tenant isolation with simple direct RLS policies instead of multi-join chains (migration 0009)",
+      "Dropped dead set_tenant_id() SECURITY DEFINER function — removed unnecessary attack surface",
+      "Changed current_tenant_id() fallback from 'default' to NULL — fail-closed instead of fail-open for users without JWT tenant claim",
+      "Simplified all 5 SECURITY DEFINER RPCs to use direct tenant_id checks instead of 4-table join chains",
+      "Added tenant_id indexes on all 5 newly denormalized tables for RLS query performance",
+      "Removed 49 unused UI components and 2 dead hooks (-8,300 lines of dead code)",
+      "Removed 27 unused npm dependencies (Radix packages, cmdk, embla, vaul, react-hook-form, etc.)",
+      "Removed dead exports: updateSKUQuantity, SaleWithDetails, formatDual, pkrToUsd, DualCurrencyDisplay, browser Supabase client",
+      "Deduplicated getExchangeRate() via React.cache — was creating 2 Supabase clients per page load (layout + page)",
+      "Exchange rate DB write now skipped when value unchanged — previously wrote on every page load",
+      "Added size validation to updateSku (was missing, unlike addSku/stockIn)",
+      "Added explicit field allowlist to updateArticle — prevents mass assignment of unexpected columns"
     ]
   }
 ]
