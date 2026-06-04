@@ -148,7 +148,7 @@ export function SalesLog({ sales, exchangeRate, onSuccess }: SalesLogProps) {
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="border-b border-white/5 bg-white/[0.015]">
-                  {['Date','Item','Size','Qty','Revenue (USD)','Cost (PKR)','Profit','Channel','Client',''].map(h => (
+                  {['Date','Item','Size','Qty','Revenue','Cost','Profit','Channel','Client',''].map(h => (
                     <th key={h} className="whitespace-nowrap px-4 py-3.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
                   ))}
                 </tr>
@@ -186,8 +186,8 @@ export function SalesLog({ sales, exchangeRate, onSuccess }: SalesLogProps) {
                         <td className="px-4 py-3.5">
                           {s.costPKRAtSale ? (
                             <>
-                              <div className="tabular">{formatPKR(costPKR)}</div>
-                              <div className="text-[11px] text-muted-foreground tabular">{formatUSD(costUSD)}</div>
+                              <div className="tabular">{formatUSD(costUSD)}</div>
+                              <div className="text-[11px] text-muted-foreground tabular">{formatPKR(costPKR)}</div>
                             </>
                           ) : <span className="text-muted-foreground">—</span>}
                         </td>

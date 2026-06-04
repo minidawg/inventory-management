@@ -1,16 +1,17 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { addVendor, deleteVendor, recordVendorPayment } from '@/lib/actions'
 import { PAYMENT_METHODS } from '@/lib/types'
-import type { VendorSummary, VendorRow } from '@/lib/types'
-import { formatUSD } from '@/lib/data'
+import type { VendorSummary, VendorRow, PurchaseRow } from '@/lib/types'
+import { formatUSD, formatDate } from '@/lib/data'
+import { totalCostPKR } from '@/lib/data'
 import {
   Landmark, Plus, Trash2, Loader2, ChevronDown, ChevronUp,
-  DollarSign, AlertTriangle, CheckCircle2,
+  DollarSign, AlertTriangle, CheckCircle2, Package,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -18,11 +19,10 @@ import { cn } from '@/lib/utils'
 interface AccountsProps {
   summaries: VendorSummary[]
   vendors: VendorRow[]
+  purchases: PurchaseRow[]
 }
 
-const selectClass = 'h-11 w-full rounded-xl border border-white/10 bg-[#111] px-3 text-sm text-foreground focus:border-primary/40 focus:outline-none'
-
-export function Accounts({ summaries, vendors }: AccountsProps) {
+export function Accounts({ summaries, vendors, purchases }: AccountsProps) {
   const router = useRouter()
 
   const [expandedVendor, setExpandedVendor] = useState<string | null>(null)
@@ -39,6 +39,18 @@ export function Accounts({ summaries, vendors }: AccountsProps) {
   const [isPayingVendor,  setIsPayingVendor]  = useState<string | null>(null)
 
   const totalOutstanding = summaries.reduce((s, v) => s + Math.max(0, v.outstanding), 0)
+
+  // Group purchases by vendor
+  const purchasesByVendor = useMemo(() => {
+    const map: Record<string, PurchaseRow[]> = {}
+    for (const p of purchases) {
+      if (p.vendorId) {
+        if (!map[p.vendorId]) map[p.vendorId] = []
+        map[p.vendorId].push(p)
+      }
+    }
+    return map
+  }, [purchases])
 
   async function handleAddVendor() {
     if (!newVendorName.trim()) return
@@ -71,7 +83,6 @@ export function Accounts({ summaries, vendors }: AccountsProps) {
         toast.success('Payment recorded.')
         router.refresh()
         setPayAmount(''); setPayNotes('')
-        setExpandedVendor(null)
       }
     } catch (err: any) { toast.error(err?.message || 'Failed to record payment.') }
     finally { setIsPayingVendor(null) }
@@ -83,7 +94,7 @@ export function Accounts({ summaries, vendors }: AccountsProps) {
         <h2 className="font-[family-name:var(--font-display)] text-[1.9rem] font-semibold tracking-tight leading-none mb-1">
           Accounts Payable
         </h2>
-        <p className="text-sm text-muted-foreground">Track vendor balances and record payments</p>
+        <p className="text-sm text-muted-foreground">Track vendor balances, view purchase details, and record payments</p>
       </div>
 
       {/* Summary KPIs */}
@@ -123,6 +134,7 @@ export function Accounts({ summaries, vendors }: AccountsProps) {
               const isExpanded = expandedVendor === vendor.id
               const isConfirmingDelete = confirmDeleteId === vendor.id
               const outstanding = Math.max(0, vendor.outstanding)
+              const vendorPurchases = purchasesByVendor[vendor.id] ?? []
 
               return (
                 <div key={vendor.id} className={cn(
@@ -140,7 +152,10 @@ export function Accounts({ summaries, vendors }: AccountsProps) {
                       ) : (
                         <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
                       )}
-                      <span className="text-sm font-semibold truncate">{vendor.name}</span>
+                      <div className="min-w-0">
+                        <span className="text-sm font-semibold truncate block">{vendor.name}</span>
+                        <span className="text-[10px] text-muted-foreground">{vendorPurchases.length} purchase{vendorPurchases.length !== 1 ? 's' : ''}</span>
+                      </div>
                     </div>
                     <div className="flex items-center gap-4 shrink-0">
                       <div className="text-right">
@@ -155,71 +170,116 @@ export function Accounts({ summaries, vendors }: AccountsProps) {
                     </div>
                   </button>
 
-                  {/* Expanded: payment form + actions */}
+                  {/* Expanded: purchase ledger + payment form */}
                   {isExpanded && (
-                    <div className="border-t border-white/5 px-4 py-5 space-y-4">
-                      {outstanding > 0.01 && (
-                        <>
-                          <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">Record Payment</div>
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            <div>
-                              <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
-                                <Input type="number" value={payAmount} onChange={e => setPayAmount(e.target.value)}
-                                  onWheel={e => e.currentTarget.blur()}
-                                  placeholder="Amount" min="0.01" step="0.01"
-                                  className="pl-7 h-10 bg-[#111] border-white/10 focus:border-primary/40 tabular" />
-                              </div>
-                            </div>
-                            <div>
-                              <Input type="date" value={payDate} onChange={e => setPayDate(e.target.value)}
-                                className="h-10 bg-[#111] border-white/10 focus:border-primary/40 tabular" />
-                            </div>
-                            <div>
-                              <select value={payMethod} onChange={e => setPayMethod(e.target.value)} className="h-10 w-full rounded-xl border border-white/10 bg-[#111] px-3 text-sm text-foreground focus:border-primary/40 focus:outline-none">
-                                {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
-                              </select>
-                            </div>
-                            <div>
-                              <Input value={payNotes} onChange={e => setPayNotes(e.target.value)}
-                                placeholder="Notes (optional)"
-                                className="h-10 bg-[#111] border-white/10 focus:border-primary/40" />
-                            </div>
+                    <div className="border-t border-white/5">
+                      {/* Purchase details */}
+                      {vendorPurchases.length > 0 && (
+                        <div className="px-4 py-4 border-b border-white/5">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Package className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">Purchase History</span>
                           </div>
-                          <Button
-                            onClick={() => handlePayVendor(vendor.id)}
-                            disabled={!payAmount || Number(payAmount) <= 0 || isPayingVendor === vendor.id}
-                            size="sm"
-                            className="h-9 gap-2 bg-success/10 border border-success/20 text-success hover:bg-success/20"
-                          >
-                            {isPayingVendor === vendor.id
-                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              : <DollarSign className="h-3.5 w-3.5" />
-                            }
-                            Record Payment
-                          </Button>
-                        </>
+                          <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                            {vendorPurchases.map(p => {
+                              const lineCostPKR = totalCostPKR(p.costPKR, p.commissionPKR, p.shippingPKR) * p.quantity
+                              const lineCostUSD = lineCostPKR / p.exchangeRate
+                              const paidAtPurchase = p.amountPaidAtPurchase || 0
+                              const owedOnLine = Math.max(0, lineCostUSD - paidAtPurchase)
+
+                              return (
+                                <div key={p.id} className="flex items-center justify-between rounded-lg bg-white/[0.03] px-3 py-2.5">
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-medium truncate">{p.articleName}</span>
+                                      <span className="rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">{p.size}</span>
+                                      <span className="text-[10px] text-muted-foreground">×{p.quantity}</span>
+                                    </div>
+                                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                                      {formatDate(p.createdAt)} · {p.brandName}
+                                    </div>
+                                  </div>
+                                  <div className="text-right shrink-0 ml-4">
+                                    <div className="text-xs font-semibold tabular">{formatUSD(lineCostUSD)}</div>
+                                    {paidAtPurchase > 0 && (
+                                      <div className="text-[10px] text-success tabular">Paid {formatUSD(paidAtPurchase)}</div>
+                                    )}
+                                    {owedOnLine > 0.01 && (
+                                      <div className="text-[10px] text-amber-400 tabular">Owed {formatUSD(owedOnLine)}</div>
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
                       )}
 
-                      {/* Delete vendor */}
-                      <div className="pt-3 border-t border-white/5">
-                        {isConfirmingDelete ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-destructive/80">Delete "{vendor.name}"? This clears all payment history.</span>
-                            <Button onClick={() => handleDeleteVendor(vendor.id)} disabled={deletingId === vendor.id}
-                              size="sm" className="h-7 gap-1 bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs">
-                              {deletingId === vendor.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
-                              Confirm
+                      {/* Payment form */}
+                      <div className="px-4 py-4 space-y-4">
+                        {outstanding > 0.01 && (
+                          <>
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">Record Payment</div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <div>
+                                <div className="relative">
+                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                                  <Input type="number" value={payAmount} onChange={e => setPayAmount(e.target.value)}
+                                    onWheel={e => e.currentTarget.blur()}
+                                    placeholder="Amount" min="0.01" step="0.01"
+                                    className="pl-7 h-10 bg-[#111] border-white/10 focus:border-primary/40 tabular" />
+                                </div>
+                              </div>
+                              <div>
+                                <Input type="date" value={payDate} onChange={e => setPayDate(e.target.value)}
+                                  className="h-10 bg-[#111] border-white/10 focus:border-primary/40 tabular" />
+                              </div>
+                              <div>
+                                <select value={payMethod} onChange={e => setPayMethod(e.target.value)} className="h-10 w-full rounded-xl border border-white/10 bg-[#111] px-3 text-sm text-foreground focus:border-primary/40 focus:outline-none">
+                                  {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                                </select>
+                              </div>
+                              <div>
+                                <Input value={payNotes} onChange={e => setPayNotes(e.target.value)}
+                                  placeholder="Notes (optional)"
+                                  className="h-10 bg-[#111] border-white/10 focus:border-primary/40" />
+                              </div>
+                            </div>
+                            <Button
+                              onClick={() => handlePayVendor(vendor.id)}
+                              disabled={!payAmount || Number(payAmount) <= 0 || isPayingVendor === vendor.id}
+                              size="sm"
+                              className="h-9 gap-2 bg-success/10 border border-success/20 text-success hover:bg-success/20"
+                            >
+                              {isPayingVendor === vendor.id
+                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                : <DollarSign className="h-3.5 w-3.5" />
+                              }
+                              Record Payment
                             </Button>
-                            <Button onClick={() => setConfirmDeleteId(null)} size="sm" variant="outline"
-                              className="h-7 border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-xs">Cancel</Button>
-                          </div>
-                        ) : (
-                          <button onClick={() => setConfirmDeleteId(vendor.id)}
-                            className="flex items-center gap-1.5 text-xs text-muted-foreground/50 hover:text-destructive transition-colors">
-                            <Trash2 className="h-3.5 w-3.5" /> Delete vendor
-                          </button>
+                          </>
                         )}
+
+                        {/* Delete vendor */}
+                        <div className="pt-3 border-t border-white/5">
+                          {isConfirmingDelete ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-destructive/80">Delete &ldquo;{vendor.name}&rdquo;? This clears all payment history.</span>
+                              <Button onClick={() => handleDeleteVendor(vendor.id)} disabled={deletingId === vendor.id}
+                                size="sm" className="h-7 gap-1 bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs">
+                                {deletingId === vendor.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                                Confirm
+                              </Button>
+                              <Button onClick={() => setConfirmDeleteId(null)} size="sm" variant="outline"
+                                className="h-7 border-white/10 bg-white/[0.03] hover:bg-white/[0.06] text-xs">Cancel</Button>
+                            </div>
+                          ) : (
+                            <button onClick={() => setConfirmDeleteId(vendor.id)}
+                              className="flex items-center gap-1.5 text-xs text-muted-foreground/50 hover:text-destructive transition-colors">
+                              <Trash2 className="h-3.5 w-3.5" /> Delete vendor
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}

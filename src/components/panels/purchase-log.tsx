@@ -116,7 +116,7 @@ export function PurchaseLog({ purchases, exchangeRate, onSuccess }: PurchaseLogP
           <h2 className="font-[family-name:var(--font-display)] text-[1.9rem] font-semibold tracking-tight leading-none mb-1">
             Purchase Log
           </h2>
-          <p className="text-sm text-muted-foreground">All inventory purchases · costs in PKR</p>
+          <p className="text-sm text-muted-foreground">All inventory purchases</p>
         </div>
         <Button onClick={exportCSV} size="sm"
           className="gap-2 border border-primary/20 bg-primary/8 text-primary hover:bg-primary/15 hover:border-primary/30">
@@ -130,8 +130,8 @@ export function PurchaseLog({ purchases, exchangeRate, onSuccess }: PurchaseLogP
           {
             icon: TrendingDown, bg: 'bg-destructive/10', fg: 'text-destructive',
             label: 'Total Spent',
-            primary: formatPKR(stats.totalCostPKRVal),
-            secondary: formatUSD(stats.totalCostUSD),
+            primary: formatUSD(stats.totalCostUSD),
+            secondary: formatPKR(stats.totalCostPKRVal),
           },
           {
             icon: Package, bg: 'bg-blue-500/10', fg: 'text-blue-400',
@@ -148,8 +148,8 @@ export function PurchaseLog({ purchases, exchangeRate, onSuccess }: PurchaseLogP
           {
             icon: Package, bg: 'bg-primary/10', fg: 'text-primary',
             label: 'Avg Unit Cost',
-            primary: stats.avgUnitPKR > 0 ? formatPKR(stats.avgUnitPKR) : '—',
-            secondary: stats.avgUnitPKR > 0 ? formatUSD(stats.avgUnitPKR / exchangeRate) : '',
+            primary: stats.avgUnitPKR > 0 ? formatUSD(stats.avgUnitPKR / exchangeRate) : '—',
+            secondary: stats.avgUnitPKR > 0 ? formatPKR(stats.avgUnitPKR) : '',
           },
         ].map(card => (
           <div key={card.label} className="rounded-2xl border border-[rgba(255,255,255,0.06)] bg-[#141414] p-4">
@@ -197,7 +197,7 @@ export function PurchaseLog({ purchases, exchangeRate, onSuccess }: PurchaseLogP
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="border-b border-white/5 bg-white/[0.015]">
-                  {['Date','Item','Size','Qty','Unit Cost','Fees','Line Total','Source','Notes',''].map(h => (
+                  {['Date','Item','Size','Qty','Unit Cost','Fees','Line Total','Vendor','Source',''].map(h => (
                     <th key={h} className="whitespace-nowrap px-4 py-3.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
                   ))}
                 </tr>
@@ -234,32 +234,41 @@ export function PurchaseLog({ purchases, exchangeRate, onSuccess }: PurchaseLogP
                       {/* Qty */}
                       <td className="px-4 py-3.5 tabular font-semibold">{p.quantity}</td>
 
-                      {/* Unit Cost */}
+                      {/* Unit Cost — USD primary */}
                       <td className="px-4 py-3.5">
-                        <div className="font-medium tabular">{formatPKR(p.costPKR)}</div>
-                        <div className="text-[11px] text-muted-foreground tabular">{formatUSD(p.costPKR / p.exchangeRate)}</div>
+                        <div className="font-medium tabular">{formatUSD(p.costPKR / p.exchangeRate)}</div>
+                        <div className="text-[11px] text-muted-foreground tabular">{formatPKR(p.costPKR)}</div>
                       </td>
 
                       {/* Fees */}
                       <td className="px-4 py-3.5">
                         {fees > 0 ? (
                           <>
-                            <div className="tabular">{formatPKR(fees)}</div>
-                            <div className="text-[11px] text-muted-foreground tabular">{formatUSD(fees / p.exchangeRate)}</div>
+                            <div className="tabular">{formatUSD(fees / p.exchangeRate)}</div>
+                            <div className="text-[11px] text-muted-foreground tabular">{formatPKR(fees)}</div>
                           </>
                         ) : (
                           <span className="text-muted-foreground/50">—</span>
                         )}
                       </td>
 
-                      {/* Line total (unit all-in × qty) */}
+                      {/* Line total — USD primary */}
                       <td className="px-4 py-3.5">
-                        <div className="font-semibold text-foreground tabular">{formatPKR(lineTotal)}</div>
-                        <div className="text-[11px] text-muted-foreground tabular">{formatUSD(lineTotal / p.exchangeRate)}</div>
+                        <div className="font-semibold text-foreground tabular">{formatUSD(lineTotal / p.exchangeRate)}</div>
+                        <div className="text-[11px] text-muted-foreground tabular">{formatPKR(lineTotal)}</div>
                         {p.quantity > 1 && (
                           <div className="text-[10px] text-muted-foreground/60 mt-0.5">
-                            {formatPKR(unitAllIn)}/pc
+                            {formatUSD(unitAllIn / p.exchangeRate)}/pc
                           </div>
+                        )}
+                      </td>
+
+                      {/* Vendor */}
+                      <td className="px-4 py-3.5 text-xs">
+                        {p.vendorName ? (
+                          <span className="inline-flex items-center rounded-md bg-violet-500/10 px-2 py-0.5 text-violet-400 font-medium">{p.vendorName}</span>
+                        ) : (
+                          <span className="text-muted-foreground/50">—</span>
                         )}
                       </td>
 
@@ -279,16 +288,7 @@ export function PurchaseLog({ purchases, exchangeRate, onSuccess }: PurchaseLogP
                         )}
                       </td>
 
-                      {/* Notes */}
-                      <td className="px-4 py-3.5 max-w-[160px]">
-                        {p.notes ? (
-                          <span className="text-xs text-muted-foreground line-clamp-2" title={p.notes}>{p.notes}</span>
-                        ) : (
-                          <span className="text-muted-foreground/50">—</span>
-                        )}
-                      </td>
-
-                      {/* Delete — targets the exact purchase row by its UUID primary key */}
+                      {/* Delete */}
                       <td className="px-4 py-3.5">
                         {confirmId === p.id ? (
                           <div className="flex items-center gap-1">
@@ -323,8 +323,8 @@ export function PurchaseLog({ purchases, exchangeRate, onSuccess }: PurchaseLogP
                     <td className="px-4 py-3 tabular font-bold">{stats.totalQty}</td>
                     <td colSpan={2} />
                     <td className="px-4 py-3">
-                      <div className="font-bold tabular">{formatPKR(stats.totalCostPKRVal)}</div>
-                      <div className="text-xs text-muted-foreground tabular">{formatUSD(stats.totalCostUSD)}</div>
+                      <div className="font-bold tabular">{formatUSD(stats.totalCostUSD)}</div>
+                      <div className="text-xs text-muted-foreground tabular">{formatPKR(stats.totalCostPKRVal)}</div>
                     </td>
                     <td colSpan={3} />
                   </tr>

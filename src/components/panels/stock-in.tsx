@@ -39,8 +39,8 @@ export function StockIn({ brands, vendors, exchangeRate, onSuccess }: StockInPro
   const [collectionId,  setCollectionId]  = useState('')
   const [articleName,   setArticleName]   = useState('')
   const [sizeRows,      setSizeRows]      = useState<SizeRow[]>([{ id: 0, size: 'M', quantity: 1 }])
-  const [costPKR,       setCostPKR]       = useState('')
-  const [shippingPKR,   setShippingPKR]   = useState('0')
+  const [costUSD,       setCostUSD]       = useState('')
+  const [shippingUSD,   setShippingUSD]   = useState('0')
   const [source,        setSource]        = useState<typeof SOURCES[number]>('prebook')
   const [vendorId,      setVendorId]      = useState('')
   const [amountRepaid,  setAmountRepaid]  = useState('0')
@@ -57,16 +57,16 @@ export function StockIn({ brands, vendors, exchangeRate, onSuccess }: StockInPro
   const totalUnits = sizeRows.reduce((s, r) => s + r.quantity, 0)
 
   const cost = useMemo(() => {
-    const c  = Number(costPKR)       || 0
-    const sh = Number(shippingPKR)   || 0
-    const unitPKR = c + sh
-    const unitUSD = unitPKR / exchangeRate
-    const linePKR = unitPKR * totalUnits
-    const lineUSD = linePKR / exchangeRate
+    const c  = Number(costUSD)       || 0
+    const sh = Number(shippingUSD)   || 0
+    const unitUSD = c + sh
+    const unitPKR = unitUSD * exchangeRate
+    const lineUSD = unitUSD * totalUnits
+    const linePKR = lineUSD * exchangeRate
     const sellUSD = unitUSD * 1.35
     const sellPKR = sellUSD * exchangeRate
     return { unitPKR, unitUSD, linePKR, lineUSD, sellPKR, sellUSD }
-  }, [costPKR, shippingPKR, exchangeRate, totalUnits])
+  }, [costUSD, shippingUSD, exchangeRate, totalUnits])
 
   function addRow() {
     setSizeRows(r => [...r, { id: nextId, size: 'M', quantity: 1 }])
@@ -92,7 +92,7 @@ export function StockIn({ brands, vendors, exchangeRate, onSuccess }: StockInPro
   function resetForm() {
     setBrandId(''); setCollectionId(''); setArticleName('')
     setSizeRows([{ id: 0, size: 'M', quantity: 1 }])
-    setCostPKR(''); setShippingPKR('0')
+    setCostUSD(''); setShippingUSD('0')
     setSource('prebook'); setVendorId(''); setAmountRepaid('0'); setNotes(''); setNextId(1)
     setImageFile(null)
     if (imagePreview) URL.revokeObjectURL(imagePreview)
@@ -100,7 +100,7 @@ export function StockIn({ brands, vendors, exchangeRate, onSuccess }: StockInPro
   }
 
   async function handleSubmit() {
-    if (!collectionId || !articleName.trim() || Number(costPKR) <= 0) return
+    if (!collectionId || !articleName.trim() || Number(costUSD) <= 0) return
     const valid = sizeRows.filter(r => r.quantity > 0)
     if (valid.length === 0) return
 
@@ -115,10 +115,14 @@ export function StockIn({ brands, vendors, exchangeRate, onSuccess }: StockInPro
         imageUrl = url
       }
 
+      // Convert USD inputs to PKR for DB storage
+      const costPKR = Number(costUSD) * exchangeRate
+      const shippingPKR = (Number(shippingUSD) || 0) * exchangeRate
+
       const result = await stockIn(
         articleName.trim(), collectionId,
         valid.map(r => ({ size: r.size, quantity: r.quantity })),
-        Number(costPKR), 0, Number(shippingPKR) || 0,
+        costPKR, 0, shippingPKR,
         exchangeRate, source, notes.trim(), false,
         imageUrl,
         vendorId || null,
@@ -146,7 +150,7 @@ export function StockIn({ brands, vendors, exchangeRate, onSuccess }: StockInPro
     }
   }
 
-  const isValid = !!(collectionId && articleName.trim() && Number(costPKR) > 0 && sizeRows.some(r => r.quantity > 0))
+  const isValid = !!(collectionId && articleName.trim() && Number(costUSD) > 0 && sizeRows.some(r => r.quantity > 0))
 
   // Calculate amount owed to vendor for this purchase
   const totalLineCostUSD = cost.lineUSD
@@ -304,27 +308,29 @@ export function StockIn({ brands, vendors, exchangeRate, onSuccess }: StockInPro
 
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <FieldLabel>Unit Cost (PKR) *</FieldLabel>
+                <FieldLabel>Unit Cost (USD) *</FieldLabel>
                 <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">₨</span>
-                  <Input type="number" value={costPKR} onChange={e => setCostPKR(e.target.value)}
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                  <Input type="number" value={costUSD} onChange={e => setCostUSD(e.target.value)}
                     onWheel={e => e.currentTarget.blur()}
-                    placeholder="e.g. 14500"
+                    placeholder="e.g. 52"
+                    min="0" step="0.01"
                     className="pl-7 h-11 bg-[#111] border-white/10 focus:border-primary/40 tabular" />
                 </div>
-                {costPKR && <p className="mt-1 text-[10px] text-primary font-semibold">≈ {formatUSD(Number(costPKR) / exchangeRate)}</p>}
+                {costUSD && <p className="mt-1 text-[10px] text-muted-foreground">≈ {formatPKR(Number(costUSD) * exchangeRate)}</p>}
               </div>
 
               <div>
-                <FieldLabel>Shipping (PKR)</FieldLabel>
+                <FieldLabel>Shipping (USD)</FieldLabel>
                 <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">₨</span>
-                  <Input type="number" value={shippingPKR} onChange={e => setShippingPKR(e.target.value)}
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                  <Input type="number" value={shippingUSD} onChange={e => setShippingUSD(e.target.value)}
                     onWheel={e => e.currentTarget.blur()}
-                    placeholder="e.g. 500"
+                    placeholder="e.g. 5"
+                    min="0" step="0.01"
                     className="pl-7 h-11 bg-[#111] border-white/10 focus:border-primary/40 tabular" />
                 </div>
-                {shippingPKR && Number(shippingPKR) > 0 && <p className="mt-1 text-[10px] text-muted-foreground">≈ {formatUSD(Number(shippingPKR) / exchangeRate)}</p>}
+                {shippingUSD && Number(shippingUSD) > 0 && <p className="mt-1 text-[10px] text-muted-foreground">≈ {formatPKR(Number(shippingUSD) * exchangeRate)}</p>}
               </div>
 
               <div>
@@ -440,7 +446,7 @@ export function StockIn({ brands, vendors, exchangeRate, onSuccess }: StockInPro
 
             {!isValid && (
               <p className="mt-3 text-center text-[11px] text-muted-foreground/60">
-                {!collectionId ? 'Select brand & collection' : !articleName.trim() ? 'Enter article name' : !costPKR ? 'Enter unit cost' : 'Add at least one size'}
+                {!collectionId ? 'Select brand & collection' : !articleName.trim() ? 'Enter article name' : !costUSD ? 'Enter unit cost' : 'Add at least one size'}
               </p>
             )}
           </div>

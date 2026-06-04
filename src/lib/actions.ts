@@ -777,6 +777,7 @@ export async function recordVendorPayment(
     if (!amount || amount <= 0) return { error: 'Amount must be greater than 0.' }
     if (!paymentDate || !/^\d{4}-\d{2}-\d{2}$/.test(paymentDate)) return { error: 'Invalid date.' }
     const client = await getSupabaseServerClient()
+    // Record in vendor_payments ledger
     const { error } = await client.from('vendor_payments').insert({
       vendor_id: vendorId,
       amount,
@@ -788,6 +789,15 @@ export async function recordVendorPayment(
       console.error('[recordVendorPayment] insert failed:', error)
       throw error
     }
+    // Also record as an expense so it shows in the expense log
+    await client.from('overheads').insert({
+      category: 'Vendor Payment',
+      amount,
+      expense_date: paymentDate,
+      notes: notes.trim() || null,
+      payment_method: paymentMethod || 'Cash',
+      vendor_id: vendorId,
+    })
     await logAudit(client, 'vendor_payment', 'vendor_payments', null,
       `Paid $${amount} to vendor ${vendorId} on ${paymentDate}`,
       { vendorId, amount, paymentDate, paymentMethod })
