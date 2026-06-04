@@ -20,6 +20,7 @@ import {
   Gem,
   Crown,
   LogOut,
+  Landmark,
 } from 'lucide-react'
 import { logout } from '@/actions/auth'
 
@@ -37,6 +38,7 @@ const navItems = [
   { id: 'purchase-log', label: 'Purchase Log',      href: '/purchases', icon: ClipboardList,   group: 'Data' },
   { id: 'sales-log',    label: 'Sales Log',         href: '/sales',     icon: DollarSign,      group: 'Data' },
   { id: 'cost-log',     label: 'Expense Log',       href: '/costs',     icon: Receipt,         group: 'Data' },
+  { id: 'accounts',     label: 'Accounts',          href: '/accounts',  icon: Landmark,        group: 'Data' },
   { id: 'settings',     label: 'Brands & Settings', href: '/settings',  icon: Settings,        group: 'System' },
 ]
 
