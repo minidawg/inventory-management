@@ -574,23 +574,47 @@ export async function updateSkuPaidStatus(skuId: string, paidToWajid: boolean): 
   }
 }
 
-// ─── Emergency Full Backup Export ────────────────────────────────────────────
+// ─── Complete Backup Export ──────────────────────────────────────────────────
 
 export async function exportAllData() {
   const client = await getSupabaseServerClient()
 
-  const [{ data: articles }, { data: purchases }, { data: sales }] = await Promise.all([
+  const [
+    { data: articles },
+    { data: purchases },
+    { data: sales },
+    { data: overheads },
+    { data: brands },
+    { data: vendors },
+    { data: vendorPayments },
+  ] = await Promise.all([
     client
       .from('articles')
-      .select('name, collections(name, brands(name)), skus(size, quantity, avg_cost_pkr, avg_exchange_rate)')
+      .select('name, image_url, collections(name, brands(name)), skus(size, quantity, avg_cost_pkr, avg_exchange_rate)')
       .order('name'),
     client
       .from('purchases')
-      .select('created_at, quantity, cost_pkr, commission_pkr, shipping_pkr, exchange_rate, source, notes, paid_to_wajid, skus(size, articles(name, collections(name, brands(name))))')
+      .select('created_at, quantity, cost_pkr, commission_pkr, shipping_pkr, exchange_rate, source, notes, paid_to_wajid, vendor_id, amount_paid_at_purchase, skus(size, articles(name, collections(name, brands(name)))), vendors(name)')
       .order('created_at', { ascending: false }),
     client
       .from('sales')
       .select('created_at, quantity, selling_price, cost_pkr_at_sale, exchange_rate_at_sale, channel, client_name, payment_method, skus(size, articles(name, collections(brands(name))))')
+      .order('created_at', { ascending: false }),
+    client
+      .from('overheads')
+      .select('created_at, category, amount, expense_date, notes, payment_method, vendors(name)')
+      .order('expense_date', { ascending: false }),
+    client
+      .from('brands')
+      .select('name, collections(name)')
+      .order('name'),
+    client
+      .from('vendors')
+      .select('name')
+      .order('name'),
+    client
+      .from('vendor_payments')
+      .select('created_at, amount, payment_date, notes, payment_method, vendors(name)')
       .order('created_at', { ascending: false }),
   ])
 
@@ -598,6 +622,10 @@ export async function exportAllData() {
     articles: (articles ?? []) as any[],
     purchases: (purchases ?? []) as any[],
     sales: (sales ?? []) as any[],
+    overheads: (overheads ?? []) as any[],
+    brands: (brands ?? []) as any[],
+    vendors: (vendors ?? []) as any[],
+    vendorPayments: (vendorPayments ?? []) as any[],
   }
 }
 
