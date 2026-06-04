@@ -30,9 +30,9 @@ export type Database = {
         Relationships: [{ foreignKeyName: 'skus_article_id_fkey'; columns: ['article_id']; referencedRelation: 'articles'; referencedColumns: ['id'] }]
       }
       purchases: {
-        Row:    { id: string; created_at: string; sku_id: string; quantity: number; cost_pkr: number; commission_pkr: number; shipping_pkr: number; exchange_rate: number; source: string | null; notes: string | null; paid_to_wajid: boolean; tenant_id: string }
-        Insert: { id?: string; created_at?: string; sku_id: string; quantity: number; cost_pkr: number; commission_pkr?: number; shipping_pkr?: number; exchange_rate: number; source?: string | null; notes?: string | null; paid_to_wajid?: boolean; tenant_id?: string }
-        Update: { id?: string; created_at?: string; sku_id?: string; quantity?: number; cost_pkr?: number; commission_pkr?: number; shipping_pkr?: number; exchange_rate?: number; source?: string | null; notes?: string | null; paid_to_wajid?: boolean; tenant_id?: string }
+        Row:    { id: string; created_at: string; sku_id: string; quantity: number; cost_pkr: number; commission_pkr: number; shipping_pkr: number; exchange_rate: number; source: string | null; notes: string | null; paid_to_wajid: boolean; tenant_id: string; vendor_id: string | null; amount_paid_at_purchase: number }
+        Insert: { id?: string; created_at?: string; sku_id: string; quantity: number; cost_pkr: number; commission_pkr?: number; shipping_pkr?: number; exchange_rate: number; source?: string | null; notes?: string | null; paid_to_wajid?: boolean; tenant_id?: string; vendor_id?: string | null; amount_paid_at_purchase?: number }
+        Update: { id?: string; created_at?: string; sku_id?: string; quantity?: number; cost_pkr?: number; commission_pkr?: number; shipping_pkr?: number; exchange_rate?: number; source?: string | null; notes?: string | null; paid_to_wajid?: boolean; tenant_id?: string; vendor_id?: string | null; amount_paid_at_purchase?: number }
         Relationships: [{ foreignKeyName: 'purchases_sku_id_fkey'; columns: ['sku_id']; referencedRelation: 'skus'; referencedColumns: ['id'] }]
       }
       sales: {
@@ -48,10 +48,22 @@ export type Database = {
         Relationships: []
       }
       overheads: {
-        Row:    { id: string; created_at: string; category: string; amount: number; expense_date: string; notes: string | null; tenant_id: string; payment_method: string | null }
-        Insert: { id?: string; created_at?: string; category: string; amount: number; expense_date?: string; notes?: string | null; tenant_id?: string; payment_method?: string | null }
-        Update: { id?: string; created_at?: string; category?: string; amount?: number; expense_date?: string; notes?: string | null; tenant_id?: string; payment_method?: string | null }
+        Row:    { id: string; created_at: string; category: string; amount: number; expense_date: string; notes: string | null; tenant_id: string; payment_method: string | null; vendor_id: string | null }
+        Insert: { id?: string; created_at?: string; category: string; amount: number; expense_date?: string; notes?: string | null; tenant_id?: string; payment_method?: string | null; vendor_id?: string | null }
+        Update: { id?: string; created_at?: string; category?: string; amount?: number; expense_date?: string; notes?: string | null; tenant_id?: string; payment_method?: string | null; vendor_id?: string | null }
         Relationships: []
+      }
+      vendors: {
+        Row:    { id: string; name: string; tenant_id: string; created_at: string }
+        Insert: { id?: string; name: string; tenant_id?: string; created_at?: string }
+        Update: { id?: string; name?: string; tenant_id?: string }
+        Relationships: []
+      }
+      vendor_payments: {
+        Row:    { id: string; vendor_id: string; amount: number; payment_date: string; notes: string | null; payment_method: string | null; tenant_id: string; created_at: string }
+        Insert: { id?: string; vendor_id: string; amount: number; payment_date: string; notes?: string | null; payment_method?: string | null; tenant_id?: string; created_at?: string }
+        Update: { id?: string; vendor_id?: string; amount?: number; payment_date?: string; notes?: string | null; payment_method?: string | null; tenant_id?: string }
+        Relationships: [{ foreignKeyName: 'vendor_payments_vendor_id_fkey'; columns: ['vendor_id']; referencedRelation: 'vendors'; referencedColumns: ['id'] }]
       }
       audit_logs: {
         Row:    { id: string; created_at: string; tenant_id: string; user_id: string | null; user_email: string | null; action: string; table_name: string; record_id: string | null; summary: string; metadata: Json | null }
@@ -107,11 +119,21 @@ export type PaymentMethod = typeof PAYMENT_METHODS[number]
 
 export const OVERHEAD_CATEGORIES = [
   'Exhibition Rent',
-  'Deliveries (Pak to US)',
-  'Supplies',
+  'Logistics / Delivery',
+  'Supplies & Packaging',
+  'Vendor Payment',
   'Miscellaneous',
 ] as const
 export type OverheadCategory = typeof OVERHEAD_CATEGORIES[number]
+
+export const VENDOR_NAMES = [
+  'Naz Fashion Bug',
+  'Infinity Jewels',
+  'Shi Brand',
+  'Seema Anjum',
+  'Hiba Saad',
+  'Samiyah Salim',
+] as const
 
 // ─── View types (returned by DAL, camelCase) ─────────────────────────────────
 
@@ -156,6 +178,9 @@ export interface PurchaseRow {
   articleName: string
   brandName: string
   collectionName: string
+  vendorId: string | null
+  vendorName: string | null
+  amountPaidAtPurchase: number
 }
 
 export interface ArticleInventory {
@@ -187,6 +212,31 @@ export interface OverheadRow {
   expenseDate: string
   notes: string | null
   paymentMethod: string | null
+  vendorId: string | null
+  vendorName: string | null
+}
+
+export interface VendorRow {
+  id: string
+  name: string
+}
+
+export interface VendorLedgerEntry {
+  id: string
+  date: string
+  type: 'purchase' | 'payment'
+  description: string
+  totalCost: number
+  amountPaid: number
+  balance: number
+}
+
+export interface VendorSummary {
+  id: string
+  name: string
+  totalOwed: number
+  totalPaid: number
+  outstanding: number
 }
 
 export interface BrandWithCollections {
