@@ -4,7 +4,7 @@ import { ThemeBootstrap } from "@/components/ThemeBootstrap";
 import { Toaster } from "@/components/ui/sonner";
 
 export const metadata: Metadata = {
-  title: "Rivayat Fashion Lounge",
+  title: "Sangat",
   description: "Inventory Management System",
 };
 

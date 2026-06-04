@@ -5,7 +5,7 @@ import { useEffect } from 'react'
 export function ThemeBootstrap() {
   useEffect(() => {
     const html = document.documentElement
-    const saved = localStorage.getItem('rivayat-theme')
+    const saved = localStorage.getItem('sangat-theme')
     if (saved === 'amethyst') {
       html.classList.add('theme-amethyst', 'dark')
     } else {

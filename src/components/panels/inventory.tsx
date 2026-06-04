@@ -131,7 +131,7 @@ export function Inventory({ inventory, brands, exchangeRate, lowStockAlertsEnabl
       const blob = new Blob([lines.join('\n')], { type: 'text/csv' })
       const a = document.createElement('a')
       a.href = URL.createObjectURL(blob)
-      a.download = `rivayat-full-backup-${date}.csv`
+      a.download = `sangat-full-backup-${date}.csv`
       a.click()
     } catch (err) {
       console.error('Export failed:', err)

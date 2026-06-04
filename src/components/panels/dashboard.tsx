@@ -238,7 +238,7 @@ export function Dashboard({ skus, sales, purchases, exchangeRate, lowStockAlerts
               <Sparkles className="h-2.5 w-2.5" /> Live
             </div>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">Rivayat Fashion Lounge — Inventory Command Centre</p>
+          <p className="text-sm text-muted-foreground mt-1">Sangat — Inventory Command Centre</p>
         </div>
       </div>
 

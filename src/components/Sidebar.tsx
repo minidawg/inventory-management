@@ -63,11 +63,11 @@ export function Sidebar({ isConnected, exchangeRate }: SidebarProps) {
     const html = document.documentElement
     if (isAmethyst) {
       html.classList.remove('theme-amethyst', 'dark')
-      localStorage.setItem('rivayat-theme', 'gold')
+      localStorage.setItem('sangat-theme', 'gold')
       setIsAmethyst(false)
     } else {
       html.classList.add('theme-amethyst', 'dark')
-      localStorage.setItem('rivayat-theme', 'amethyst')
+      localStorage.setItem('sangat-theme', 'amethyst')
       setIsAmethyst(true)
     }
   }
@@ -113,10 +113,10 @@ export function Sidebar({ isConnected, exchangeRate }: SidebarProps) {
             </div>
             <div>
               <h1 className="font-[family-name:var(--font-display)] text-[1.15rem] font-semibold leading-tight tracking-tight text-foreground">
-                Rivayat
+                Sangat
               </h1>
               <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-primary/60">
-                Fashion Lounge
+                Jewelry & Accessories
               </p>
             </div>
           </div>
@@ -242,7 +242,7 @@ export function Sidebar({ isConnected, exchangeRate }: SidebarProps) {
           </div>
 
           <div className="text-center">
-            <span className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground/40">v1.4 · May 2026</span>
+            <span className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground/40">v2.0 · Jun 2026</span>
           </div>
         </div>
       </aside>

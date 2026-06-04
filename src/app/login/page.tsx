@@ -23,10 +23,10 @@ export default function LoginPage() {
             <Sparkles className="h-6 w-6 text-primary" />
           </div>
           <h1 className="font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight text-foreground">
-            Rivayat
+            Sangat
           </h1>
           <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-primary/60 mt-1">
-            Fashion Lounge
+            Jewelry & Accessories
           </p>
         </div>
 
@@ -81,7 +81,7 @@ export default function LoginPage() {
         </div>
 
         <p className="mt-6 text-center text-[10px] uppercase tracking-[0.12em] text-muted-foreground/30">
-          Inventory Management System · v1.4
+          Inventory Management System · v2.0
         </p>
       </div>
     </div>
