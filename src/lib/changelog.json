@@ -53,5 +53,21 @@
       "Added size validation to updateSku (was missing, unlike addSku/stockIn)",
       "Added explicit field allowlist to updateArticle — prevents mass assignment of unexpected columns"
     ]
+  },
+  {
+    "date": "2026-06-04",
+    "author": "S. Hamza Ali",
+    "changes": [
+      "SANGAT BRANCH: Rebranded from Rivayat Fashion Lounge to Sangat Jewelry & Accessories",
+      "Added vendors table with tenant_id RLS, vendor_payments table for accounts payable ledger",
+      "Stock-In: replaced Paid to Wajid with Vendor dropdown, removed Commission field, added Amount Repaid with live vendor balance preview",
+      "Stock-In: cost preview now shows USD as primary currency with PKR secondary",
+      "Accounts Payable module: new /accounts page with vendor summary KPIs, per-vendor expandable cards with inline payment form",
+      "Record Expense: added Vendor Payment category with vendor dropdown — auto-records in vendor_payments ledger",
+      "Expense categories updated to accounting terms: Exhibition Rent, Logistics/Delivery, Supplies & Packaging, Vendor Payment, Miscellaneous",
+      "Unified Excel backup: Download Complete Backup in Settings exports 7-sheet .xlsx (Inventory, Purchases, Sales, Expenses, Brands, Vendors, Vendor Payments)",
+      "Cascading delete now clears expenses, vendor payments, and audit logs in addition to inventory data",
+      "Added vendor CRUD: addVendor, deleteVendor, recordVendorPayment server actions with audit logging"
+    ]
   }
 ]
