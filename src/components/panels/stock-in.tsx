@@ -5,10 +5,10 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { formatPKR, formatUSD, totalCostPKR, suggestedSellPrice } from '@/lib/data'
+import { formatPKR, formatUSD } from '@/lib/data'
 import { stockIn, uploadArticleImage } from '@/lib/actions'
 import { SIZES, SOURCES } from '@/lib/types'
-import type { BrandWithCollections } from '@/lib/types'
+import type { BrandWithCollections, VendorRow } from '@/lib/types'
 import { Plus, X, Loader2, PackagePlus, Tag, CheckCircle2, Minus } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -17,6 +17,7 @@ interface SizeRow { id: number; size: string; quantity: number }
 
 interface StockInProps {
   brands: BrandWithCollections[]
+  vendors: VendorRow[]
   exchangeRate: number
   onSuccess?: () => void
 }
@@ -31,7 +32,7 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
-export function StockIn({ brands, exchangeRate, onSuccess }: StockInProps) {
+export function StockIn({ brands, vendors, exchangeRate, onSuccess }: StockInProps) {
   const router = useRouter()
 
   const [brandId,       setBrandId]       = useState('')
@@ -39,10 +40,10 @@ export function StockIn({ brands, exchangeRate, onSuccess }: StockInProps) {
   const [articleName,   setArticleName]   = useState('')
   const [sizeRows,      setSizeRows]      = useState<SizeRow[]>([{ id: 0, size: 'M', quantity: 1 }])
   const [costPKR,       setCostPKR]       = useState('')
-  const [commissionPKR, setCommissionPKR] = useState('')
   const [shippingPKR,   setShippingPKR]   = useState('0')
   const [source,        setSource]        = useState<typeof SOURCES[number]>('prebook')
-  const [paidToWajid,   setPaidToWajid]   = useState(false)
+  const [vendorId,      setVendorId]      = useState('')
+  const [amountRepaid,  setAmountRepaid]  = useState('0')
   const [notes,         setNotes]         = useState('')
   const [imageFile,     setImageFile]     = useState<File | null>(null)
   const [imagePreview,  setImagePreview]  = useState<string | null>(null)
@@ -57,17 +58,15 @@ export function StockIn({ brands, exchangeRate, onSuccess }: StockInProps) {
 
   const cost = useMemo(() => {
     const c  = Number(costPKR)       || 0
-    const co = Number(commissionPKR) || 0
     const sh = Number(shippingPKR)   || 0
-    const unitPKR = totalCostPKR(c, co, sh)
+    const unitPKR = c + sh
+    const unitUSD = unitPKR / exchangeRate
     const linePKR = unitPKR * totalUnits
-    const sellPKR = suggestedSellPrice(c, co, sh)
-    return {
-      unitPKR,  unitUSD: unitPKR / exchangeRate,
-      linePKR,  lineUSD: linePKR / exchangeRate,
-      sellPKR,  sellUSD: sellPKR / exchangeRate,
-    }
-  }, [costPKR, commissionPKR, shippingPKR, exchangeRate, totalUnits])
+    const lineUSD = linePKR / exchangeRate
+    const sellUSD = unitUSD * 1.35
+    const sellPKR = sellUSD * exchangeRate
+    return { unitPKR, unitUSD, linePKR, lineUSD, sellPKR, sellUSD }
+  }, [costPKR, shippingPKR, exchangeRate, totalUnits])
 
   function addRow() {
     setSizeRows(r => [...r, { id: nextId, size: 'M', quantity: 1 }])
@@ -93,8 +92,8 @@ export function StockIn({ brands, exchangeRate, onSuccess }: StockInProps) {
   function resetForm() {
     setBrandId(''); setCollectionId(''); setArticleName('')
     setSizeRows([{ id: 0, size: 'M', quantity: 1 }])
-    setCostPKR(''); setCommissionPKR(''); setShippingPKR('0')
-    setSource('prebook'); setPaidToWajid(false); setNotes(''); setNextId(1)
+    setCostPKR(''); setShippingPKR('0')
+    setSource('prebook'); setVendorId(''); setAmountRepaid('0'); setNotes(''); setNextId(1)
     setImageFile(null)
     if (imagePreview) URL.revokeObjectURL(imagePreview)
     setImagePreview(null)
@@ -119,9 +118,11 @@ export function StockIn({ brands, exchangeRate, onSuccess }: StockInProps) {
       const result = await stockIn(
         articleName.trim(), collectionId,
         valid.map(r => ({ size: r.size, quantity: r.quantity })),
-        Number(costPKR), Number(commissionPKR) || 0, Number(shippingPKR) || 0,
-        exchangeRate, source, notes.trim(), paidToWajid,
+        Number(costPKR), 0, Number(shippingPKR) || 0,
+        exchangeRate, source, notes.trim(), false,
         imageUrl,
+        vendorId || null,
+        Number(amountRepaid) || 0,
       )
       if (result?.error) {
         toast.error(result.error)
@@ -146,6 +147,11 @@ export function StockIn({ brands, exchangeRate, onSuccess }: StockInProps) {
   }
 
   const isValid = !!(collectionId && articleName.trim() && Number(costPKR) > 0 && sizeRows.some(r => r.quantity > 0))
+
+  // Calculate amount owed to vendor for this purchase
+  const totalLineCostUSD = cost.lineUSD
+  const repaidUSD = Number(amountRepaid) || 0
+  const owedUSD = Math.max(0, totalLineCostUSD - repaidUSD)
 
   return (
     <div className="animate-fade-in">
@@ -201,7 +207,7 @@ export function StockIn({ brands, exchangeRate, onSuccess }: StockInProps) {
               <div className="md:col-span-2">
                 <FieldLabel>Article Name <span className="font-normal lowercase tracking-normal text-muted-foreground/50">(auto-creates if new)</span></FieldLabel>
                 <Input value={articleName} onChange={e => setArticleName(e.target.value)}
-                  placeholder="e.g. Muzlin 3-Piece Embroidered"
+                  placeholder="e.g. Pearl Drop Necklace Set"
                   className="h-11 bg-[#111] border-white/10 focus:border-primary/40" />
               </div>
 
@@ -244,7 +250,6 @@ export function StockIn({ brands, exchangeRate, onSuccess }: StockInProps) {
               {sizeRows.map(row => (
                 <div key={row.id}
                   className="grid grid-cols-[140px_1fr_36px] items-end gap-3 rounded-xl border border-white/5 bg-[#111]/60 px-4 py-3">
-                  {/* Size */}
                   <div>
                     <FieldLabel>Size</FieldLabel>
                     <select value={row.size} onChange={e => updateRow(row.id, 'size', e.target.value)}
@@ -253,7 +258,6 @@ export function StockIn({ brands, exchangeRate, onSuccess }: StockInProps) {
                     </select>
                   </div>
 
-                  {/* Qty stepper */}
                   <div>
                     <FieldLabel>Quantity</FieldLabel>
                     <div className="flex items-center rounded-xl border border-white/10 bg-[#111] overflow-hidden h-9">
@@ -272,7 +276,6 @@ export function StockIn({ brands, exchangeRate, onSuccess }: StockInProps) {
                     </div>
                   </div>
 
-                  {/* Remove */}
                   <button onClick={() => removeRow(row.id)} disabled={sizeRows.length <= 1}
                     className={cn('flex h-9 w-9 items-center justify-center rounded-lg border border-white/8 transition-all',
                       sizeRows.length > 1
@@ -290,14 +293,13 @@ export function StockIn({ brands, exchangeRate, onSuccess }: StockInProps) {
             </button>
           </div>
 
-          {/* Pricing */}
+          {/* Pricing & Vendor */}
           <div className="rounded-2xl border border-[rgba(255,255,255,0.06)] bg-[#141414] p-6">
             <div className="flex items-center gap-3 mb-5 pb-4 border-b border-white/5">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <span className="text-sm font-bold">₨</span>
+                <span className="text-sm font-bold">$</span>
               </div>
-              <h3 className="text-sm font-semibold">Cost Breakdown</h3>
-              <span className="ml-auto text-xs text-muted-foreground">All values in PKR</span>
+              <h3 className="text-sm font-semibold">Cost & Vendor</h3>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
@@ -310,19 +312,7 @@ export function StockIn({ brands, exchangeRate, onSuccess }: StockInProps) {
                     placeholder="e.g. 14500"
                     className="pl-7 h-11 bg-[#111] border-white/10 focus:border-primary/40 tabular" />
                 </div>
-                {costPKR && <p className="mt-1 text-[10px] text-muted-foreground">≈ {formatUSD(Number(costPKR) / exchangeRate)}</p>}
-              </div>
-
-              <div>
-                <FieldLabel>Commission (PKR)</FieldLabel>
-                <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">₨</span>
-                  <Input type="number" value={commissionPKR} onChange={e => setCommissionPKR(e.target.value)}
-                    onWheel={e => e.currentTarget.blur()}
-                    placeholder="e.g. 1500"
-                    className="pl-7 h-11 bg-[#111] border-white/10 focus:border-primary/40 tabular" />
-                </div>
-                {commissionPKR && <p className="mt-1 text-[10px] text-muted-foreground">≈ {formatUSD(Number(commissionPKR) / exchangeRate)}</p>}
+                {costPKR && <p className="mt-1 text-[10px] text-primary font-semibold">≈ {formatUSD(Number(costPKR) / exchangeRate)}</p>}
               </div>
 
               <div>
@@ -338,6 +328,31 @@ export function StockIn({ brands, exchangeRate, onSuccess }: StockInProps) {
               </div>
 
               <div>
+                <FieldLabel>Vendor *</FieldLabel>
+                <select value={vendorId} onChange={e => setVendorId(e.target.value)} className={selectClass}>
+                  <option value="">Select vendor…</option>
+                  {vendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <FieldLabel>Amount Repaid (USD)</FieldLabel>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+                  <Input type="number" value={amountRepaid} onChange={e => setAmountRepaid(e.target.value)}
+                    onWheel={e => e.currentTarget.blur()}
+                    min="0" step="0.01"
+                    placeholder="0"
+                    className="pl-7 h-11 bg-[#111] border-white/10 focus:border-primary/40 tabular" />
+                </div>
+                {vendorId && totalLineCostUSD > 0 && (
+                  <p className={cn('mt-1 text-[10px] font-semibold', owedUSD > 0 ? 'text-amber-400' : 'text-success')}>
+                    {owedUSD > 0 ? `${formatUSD(owedUSD)} owed to vendor` : 'Fully paid'}
+                  </p>
+                )}
+              </div>
+
+              <div>
                 <FieldLabel>Source</FieldLabel>
                 <select value={source} onChange={e => setSource(e.target.value as typeof SOURCES[number])} className={selectClass}>
                   <option value="prebook">Pre-book</option>
@@ -346,21 +361,9 @@ export function StockIn({ brands, exchangeRate, onSuccess }: StockInProps) {
               </div>
 
               <div>
-                <FieldLabel>Paid to Wajid</FieldLabel>
-                <select
-                  value={paidToWajid ? 'yes' : 'no'}
-                  onChange={e => setPaidToWajid(e.target.value === 'yes')}
-                  className={selectClass}
-                >
-                  <option value="no">No</option>
-                  <option value="yes">Yes</option>
-                </select>
-              </div>
-
-              <div className="md:col-span-2">
                 <FieldLabel>Notes <span className="font-normal lowercase tracking-normal text-muted-foreground/50">(optional)</span></FieldLabel>
                 <Input value={notes} onChange={e => setNotes(e.target.value)}
-                  placeholder="e.g. limited colourway, ETA 2 weeks"
+                  placeholder="e.g. limited edition, ETA 2 weeks"
                   className="h-11 bg-[#111] border-white/10 focus:border-primary/40" />
               </div>
             </div>
@@ -379,14 +382,14 @@ export function StockIn({ brands, exchangeRate, onSuccess }: StockInProps) {
                 <span className="text-xl font-bold num-display">{totalUnits}</span>
               </div>
 
-              {/* Per-unit all-in */}
+              {/* Per-unit all-in — USD primary */}
               <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Unit Cost (all-in)</div>
                 <div className="text-2xl font-bold num-display text-foreground">
-                  {cost.unitPKR ? formatPKR(cost.unitPKR) : '—'}
+                  {cost.unitUSD ? formatUSD(cost.unitUSD) : '—'}
                 </div>
                 <div className="text-xs text-muted-foreground mt-0.5">
-                  {cost.unitUSD ? formatUSD(cost.unitUSD) : ''}
+                  {cost.unitPKR ? formatPKR(cost.unitPKR) : ''}
                 </div>
               </div>
 
@@ -396,8 +399,8 @@ export function StockIn({ brands, exchangeRate, onSuccess }: StockInProps) {
                   <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
                     Total ({totalUnits} pcs)
                   </div>
-                  <div className="text-xl font-bold num-display">{formatPKR(cost.linePKR)}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{formatUSD(cost.lineUSD)}</div>
+                  <div className="text-xl font-bold num-display">{formatUSD(cost.lineUSD)}</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">{formatPKR(cost.linePKR)}</div>
                 </div>
               )}
 
@@ -411,6 +414,19 @@ export function StockIn({ brands, exchangeRate, onSuccess }: StockInProps) {
                   {cost.sellPKR ? formatPKR(cost.sellPKR) : ''}
                 </div>
               </div>
+
+              {/* Vendor owed */}
+              {vendorId && totalLineCostUSD > 0 && (
+                <div className={cn(
+                  'rounded-xl border px-4 py-3',
+                  owedUSD > 0 ? 'border-amber-500/20 bg-amber-500/8' : 'border-success/20 bg-success/8',
+                )}>
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Vendor Balance</div>
+                  <div className={cn('text-lg font-bold num-display', owedUSD > 0 ? 'text-amber-400' : 'text-success')}>
+                    {owedUSD > 0 ? formatUSD(owedUSD) + ' owed' : 'Fully paid'}
+                  </div>
+                </div>
+              )}
 
             </div>
 

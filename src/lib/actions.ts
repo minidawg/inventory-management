@@ -81,6 +81,8 @@ export async function stockIn(
   notes: string,
   paidToWajid: boolean,
   imageUrl?: string,
+  vendorId?: string | null,
+  amountPaidAtPurchase?: number,
 ): Promise<{ error?: string }> {
   try {
     if (!costPKR || costPKR <= 0) throw new Error('Unit cost must be greater than 0.')
@@ -175,6 +177,8 @@ export async function stockIn(
         source: source || null,
         notes: notes || null,
         paid_to_wajid: paidToWajid,
+        vendor_id: vendorId || null,
+        amount_paid_at_purchase: amountPaidAtPurchase ?? 0,
       })
       if (purchaseError) {
         console.error('[stockIn] purchase insert failed:', purchaseError)
@@ -538,7 +542,10 @@ export async function clearAllData(confirmation: string): Promise<{ error?: stri
     await client.from('purchases').delete().not('id', 'is', null)
     await client.from('skus').delete().not('id', 'is', null)
     await client.from('articles').delete().not('id', 'is', null)
-    await logAudit(client, 'all_data_cleared', '*', null, 'CLEARED ALL inventory data (articles, SKUs, purchases, sales)')
+    await client.from('overheads').delete().not('id', 'is', null)
+    await client.from('vendor_payments').delete().not('id', 'is', null)
+    await client.from('audit_logs').delete().not('id', 'is', null)
+    await logAudit(client, 'all_data_cleared', '*', null, 'CLEARED ALL data (inventory, expenses, vendor payments, audit logs)')
     revalidatePath('/', 'layout')
     return {}
   } catch (e: any) {
@@ -602,26 +609,46 @@ export async function recordCost(
   expenseDate: string,
   notes: string,
   paymentMethod: string,
+  vendorId?: string | null,
 ): Promise<{ error?: string }> {
   try {
     if (!OVERHEAD_CATEGORIES.includes(category as any)) return { error: 'Invalid category.' }
     if (!amount || amount <= 0) return { error: 'Amount must be greater than 0.' }
     if (!expenseDate || !/^\d{4}-\d{2}-\d{2}$/.test(expenseDate)) return { error: 'Invalid date.' }
     const client = await getSupabaseServerClient()
+
+    // Insert the overhead record
     const { error } = await client.from('overheads').insert({
       category,
       amount,
       expense_date: expenseDate,
       notes: notes.trim() || null,
       payment_method: paymentMethod || 'Cash',
+      vendor_id: vendorId || null,
     })
     if (error) {
       console.error('[recordCost] insert failed:', error)
       throw error
     }
+
+    // If this is a vendor payment, also record it in the vendor_payments ledger
+    if (vendorId && category === 'Vendor Payment') {
+      const { error: vpError } = await client.from('vendor_payments').insert({
+        vendor_id: vendorId,
+        amount,
+        payment_date: expenseDate,
+        notes: notes.trim() || null,
+        payment_method: paymentMethod || 'Cash',
+      })
+      if (vpError) {
+        console.error('[recordCost] vendor_payment insert failed:', vpError)
+        // Non-fatal — the overhead is already recorded
+      }
+    }
+
     await logAudit(client, 'cost_recorded', 'overheads', null,
-      `Recorded ${category} cost of $${amount} on ${expenseDate} via ${paymentMethod || 'Cash'}`,
-      { category, amount, expenseDate, paymentMethod })
+      `Recorded ${category} cost of $${amount} on ${expenseDate} via ${paymentMethod || 'Cash'}${vendorId ? ' (vendor payment)' : ''}`,
+      { category, amount, expenseDate, paymentMethod, vendorId })
     revalidatePath('/', 'layout')
     return {}
   } catch (e: any) {
@@ -676,6 +703,70 @@ export async function updateOverhead(
     return {}
   } catch (e: any) {
     return { error: e?.message || 'Failed to update cost.' }
+  }
+}
+
+// ─── Vendors ─────────────────────────────────────────────────────────────────
+
+export async function addVendor(name: string): Promise<{ error?: string }> {
+  const trimmed = name.trim()
+  if (!trimmed) return { error: 'Vendor name cannot be empty.' }
+  if (trimmed.length > 100) return { error: 'Vendor name must be 100 characters or fewer.' }
+  try {
+    const client = await getSupabaseServerClient()
+    const { error } = await client.from('vendors').insert({ name: trimmed })
+    if (error) throw error
+    await logAudit(client, 'vendor_added', 'vendors', null, `Added vendor "${trimmed}"`)
+    revalidatePath('/', 'layout')
+    return {}
+  } catch (e: any) {
+    return { error: e?.message || 'Failed to add vendor.' }
+  }
+}
+
+export async function deleteVendor(vendorId: string): Promise<{ error?: string }> {
+  try {
+    const client = await getSupabaseServerClient()
+    const { error } = await client.from('vendors').delete().eq('id', vendorId)
+    if (error) throw error
+    await logAudit(client, 'vendor_deleted', 'vendors', vendorId, `Deleted vendor ${vendorId}`)
+    revalidatePath('/', 'layout')
+    return {}
+  } catch (e: any) {
+    return { error: e?.message || 'Failed to delete vendor.' }
+  }
+}
+
+export async function recordVendorPayment(
+  vendorId: string,
+  amount: number,
+  paymentDate: string,
+  notes: string,
+  paymentMethod: string,
+): Promise<{ error?: string }> {
+  try {
+    if (!vendorId) return { error: 'Vendor is required.' }
+    if (!amount || amount <= 0) return { error: 'Amount must be greater than 0.' }
+    if (!paymentDate || !/^\d{4}-\d{2}-\d{2}$/.test(paymentDate)) return { error: 'Invalid date.' }
+    const client = await getSupabaseServerClient()
+    const { error } = await client.from('vendor_payments').insert({
+      vendor_id: vendorId,
+      amount,
+      payment_date: paymentDate,
+      notes: notes.trim() || null,
+      payment_method: paymentMethod || 'Cash',
+    })
+    if (error) {
+      console.error('[recordVendorPayment] insert failed:', error)
+      throw error
+    }
+    await logAudit(client, 'vendor_payment', 'vendor_payments', null,
+      `Paid $${amount} to vendor ${vendorId} on ${paymentDate}`,
+      { vendorId, amount, paymentDate, paymentMethod })
+    revalidatePath('/', 'layout')
+    return {}
+  } catch (e: any) {
+    return { error: e?.message || 'Failed to record vendor payment.' }
   }
 }
 

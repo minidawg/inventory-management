@@ -13,6 +13,9 @@ import type {
   OverheadRow,
   AuditLogEntry,
   ChangelogEntry,
+  VendorRow,
+  VendorSummary,
+  VendorLedgerEntry,
 } from '@/lib/types'
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -198,8 +201,9 @@ export async function getPurchases(): Promise<PurchaseRow[]> {
       .from('purchases')
       .select(`
         id, created_at, quantity, cost_pkr, commission_pkr, shipping_pkr,
-        exchange_rate, source, notes, paid_to_wajid,
-        skus( size, articles( name, collections( name, brands(name) ) ) )
+        exchange_rate, source, notes, paid_to_wajid, vendor_id, amount_paid_at_purchase,
+        skus( size, articles( name, collections( name, brands(name) ) ) ),
+        vendors( name )
       `)
       .order('created_at', { ascending: false })
 
@@ -220,6 +224,9 @@ export async function getPurchases(): Promise<PurchaseRow[]> {
       articleName: p.skus?.articles?.name ?? '',
       brandName: p.skus?.articles?.collections?.brands?.name ?? '',
       collectionName: p.skus?.articles?.collections?.name ?? '',
+      vendorId: p.vendor_id ?? null,
+      vendorName: p.vendors?.name ?? null,
+      amountPaidAtPurchase: Number(p.amount_paid_at_purchase) || 0,
     }))
   } catch (error) {
     console.error('[getPurchases] failed:', error)
@@ -234,7 +241,7 @@ export async function getOverheads(): Promise<OverheadRow[]> {
     const client = await getSupabaseServerClient()
     const { data } = await client
       .from('overheads')
-      .select('id, created_at, category, amount, expense_date, notes, payment_method')
+      .select('id, created_at, category, amount, expense_date, notes, payment_method, vendor_id, vendors( name )')
       .order('expense_date', { ascending: false })
     if (!data) return []
     return (data as any[]).map((r) => ({
@@ -245,6 +252,8 @@ export async function getOverheads(): Promise<OverheadRow[]> {
       expenseDate: r.expense_date,
       notes: r.notes ?? null,
       paymentMethod: r.payment_method ?? null,
+      vendorId: r.vendor_id ?? null,
+      vendorName: r.vendors?.name ?? null,
     }))
   } catch (error) {
     console.error('[getOverheads] failed:', error)
@@ -318,6 +327,144 @@ export async function getBrands(): Promise<BrandWithCollections[]> {
     }))
   } catch (error) {
     console.error('[getBrands] failed:', error)
+    return []
+  }
+}
+
+// ─── Vendors ─────────────────────────────────────────────────────────────────
+
+export async function getVendors(): Promise<VendorRow[]> {
+  try {
+    const client = await getSupabaseServerClient()
+    const { data } = await client
+      .from('vendors')
+      .select('id, name')
+      .order('name')
+    if (!data) return []
+    return data as VendorRow[]
+  } catch (error) {
+    console.error('[getVendors] failed:', error)
+    return []
+  }
+}
+
+export async function getVendorSummaries(): Promise<VendorSummary[]> {
+  try {
+    const client = await getSupabaseServerClient()
+
+    // Get all vendors
+    const { data: vendors } = await client.from('vendors').select('id, name').order('name')
+    if (!vendors || vendors.length === 0) return []
+
+    // Get all purchases with vendor_id (total cost owed per vendor)
+    const { data: purchases } = await client
+      .from('purchases')
+      .select('vendor_id, cost_pkr, commission_pkr, shipping_pkr, quantity, exchange_rate, amount_paid_at_purchase')
+      .not('vendor_id', 'is', null)
+
+    // Get all vendor payments (total paid back)
+    const { data: payments } = await client
+      .from('vendor_payments')
+      .select('vendor_id, amount')
+
+    const purchasesByVendor: Record<string, { totalCostUSD: number; totalPaidAtPurchase: number }> = {}
+    for (const p of purchases ?? []) {
+      if (!p.vendor_id) continue
+      const entry = purchasesByVendor[p.vendor_id] ?? { totalCostUSD: 0, totalPaidAtPurchase: 0 }
+      const totalCostPKR = (Number(p.cost_pkr) + Number(p.commission_pkr) + Number(p.shipping_pkr)) * Number(p.quantity)
+      entry.totalCostUSD += totalCostPKR / (Number(p.exchange_rate) || 1)
+      entry.totalPaidAtPurchase += Number(p.amount_paid_at_purchase) || 0
+      purchasesByVendor[p.vendor_id] = entry
+    }
+
+    const paymentsByVendor: Record<string, number> = {}
+    for (const p of payments ?? []) {
+      paymentsByVendor[p.vendor_id] = (paymentsByVendor[p.vendor_id] ?? 0) + Number(p.amount)
+    }
+
+    return vendors.map(v => {
+      const purch = purchasesByVendor[v.id] ?? { totalCostUSD: 0, totalPaidAtPurchase: 0 }
+      const totalPaidBack = paymentsByVendor[v.id] ?? 0
+      const totalPaid = purch.totalPaidAtPurchase + totalPaidBack
+      return {
+        id: v.id,
+        name: v.name,
+        totalOwed: purch.totalCostUSD,
+        totalPaid,
+        outstanding: purch.totalCostUSD - totalPaid,
+      }
+    })
+  } catch (error) {
+    console.error('[getVendorSummaries] failed:', error)
+    return []
+  }
+}
+
+export async function getVendorLedger(vendorId: string): Promise<VendorLedgerEntry[]> {
+  try {
+    const client = await getSupabaseServerClient()
+
+    // Get purchases for this vendor
+    const { data: purchases } = await client
+      .from('purchases')
+      .select('id, created_at, quantity, cost_pkr, commission_pkr, shipping_pkr, exchange_rate, amount_paid_at_purchase, skus( size, articles( name ) )')
+      .eq('vendor_id', vendorId)
+      .order('created_at', { ascending: true })
+
+    // Get payments to this vendor
+    const { data: payments } = await client
+      .from('vendor_payments')
+      .select('id, created_at, amount, payment_date, notes')
+      .eq('vendor_id', vendorId)
+      .order('created_at', { ascending: true })
+
+    const entries: VendorLedgerEntry[] = []
+    let runningBalance = 0
+
+    // Merge and sort by date
+    const all: { date: string; type: 'purchase' | 'payment'; data: any }[] = []
+    for (const p of purchases ?? []) {
+      all.push({ date: p.created_at, type: 'purchase', data: p })
+    }
+    for (const p of payments ?? []) {
+      all.push({ date: p.created_at, type: 'payment', data: p })
+    }
+    all.sort((a, b) => a.date.localeCompare(b.date))
+
+    for (const item of all) {
+      if (item.type === 'purchase') {
+        const p = item.data
+        const totalCostPKR = (Number(p.cost_pkr) + Number(p.commission_pkr) + Number(p.shipping_pkr)) * Number(p.quantity)
+        const totalCostUSD = totalCostPKR / (Number(p.exchange_rate) || 1)
+        const amountPaid = Number(p.amount_paid_at_purchase) || 0
+        runningBalance += totalCostUSD - amountPaid
+        entries.push({
+          id: p.id,
+          date: p.created_at,
+          type: 'purchase',
+          description: `${p.skus?.articles?.name ?? 'Unknown'} (${p.skus?.size ?? '?'}) ×${p.quantity}`,
+          totalCost: totalCostUSD,
+          amountPaid,
+          balance: runningBalance,
+        })
+      } else {
+        const p = item.data
+        runningBalance -= Number(p.amount)
+        entries.push({
+          id: p.id,
+          date: p.created_at,
+          type: 'payment',
+          description: p.notes || 'Payment to vendor',
+          totalCost: 0,
+          amountPaid: Number(p.amount),
+          balance: runningBalance,
+        })
+      }
+    }
+
+    return entries
+  } catch (error) {
+    console.error('[getVendorLedger] failed:', error)
     return []
   }
 }
