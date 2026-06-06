@@ -4,9 +4,9 @@ import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { addBrand, deleteBrand, addCollection, deleteCollection, clearAllData, updateSetting } from '@/lib/actions'
+import { addBrand, deleteBrand, addCollection, deleteCollection, clearAllData, updateSetting, exportAllData } from '@/lib/actions'
 import type { BrandWithCollections, AuditLogEntry, ChangelogEntry } from '@/lib/types'
-import { ChevronDown, ChevronUp, Plus, X, Loader2, AlertTriangle, Sparkles, Search, Check, Trash2, Bell, RefreshCw, Activity, BookOpen } from 'lucide-react'
+import { ChevronDown, ChevronUp, Plus, X, Loader2, AlertTriangle, Sparkles, Search, Check, Trash2, Bell, RefreshCw, Activity, BookOpen, Download } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -34,6 +34,9 @@ export function Settings({ brands, lowStockAlerts, usdRate, auditLog = [], chang
   const [addingColFor,       setAddingColFor]        = useState<string | null>(null)
   const [confirmDeleteCol,   setConfirmDeleteCol]    = useState<string | null>(null)
   const [deletingColId,      setDeletingColId]       = useState<string | null>(null)
+
+  // Backup
+  const [isExporting, setIsExporting] = useState(false)
 
   // Danger zone
   const [clearInput,  setClearInput]  = useState('')
@@ -480,6 +483,51 @@ export function Settings({ brands, lowStockAlerts, usdRate, auditLog = [], chang
         )}
       </div>
 
+      {/* Backup */}
+      <div className="rounded-2xl border border-[rgba(255,255,255,0.06)] bg-[#141414] p-6 mb-5">
+        <div className="flex items-center gap-3 mb-5 pb-4 border-b border-white/5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Download className="h-4 w-4" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold leading-none">Data Backup</h3>
+            <p className="text-[11px] text-muted-foreground mt-0.5">Export all tenant data as a multi-sheet Excel file</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium">Download Complete Backup</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Includes inventory, purchases, sales, expenses, brands, and vendor data</p>
+          </div>
+          <Button
+            onClick={async () => {
+              setIsExporting(true)
+              try {
+                const data = await exportAllData()
+                const { generateBackupXlsx } = await import('@/lib/export-xlsx')
+                const blob = generateBackupXlsx(data)
+                const a = document.createElement('a')
+                a.href = URL.createObjectURL(blob)
+                a.download = `rivayat-backup-${new Date().toISOString().slice(0, 10)}.xlsx`
+                a.click()
+                URL.revokeObjectURL(a.href)
+                toast.success('Backup downloaded.')
+              } catch (err: any) {
+                console.error('[exportBackup] failed:', err)
+                toast.error('Backup failed. Please try again.')
+              } finally {
+                setIsExporting(false)
+              }
+            }}
+            disabled={isExporting}
+            className="gap-2 shrink-0 bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            {isExporting ? 'Exporting…' : 'Download Complete Backup'}
+          </Button>
+        </div>
+      </div>
+
       {/* Danger Zone */}
       <div className="rounded-2xl border border-destructive/25 bg-destructive/5 p-6">
         <div className="flex items-center gap-3 mb-5 pb-4 border-b border-destructive/15">
@@ -495,9 +543,9 @@ export function Settings({ brands, lowStockAlerts, usdRate, auditLog = [], chang
         {!showClearBox ? (
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <p className="text-sm font-medium text-destructive/80">Clear All Inventory Data</p>
+              <p className="text-sm font-medium text-destructive/80">Clear All Data</p>
               <p className="text-xs text-destructive/50 mt-0.5">
-                Deletes all SKUs, purchases, and sales. Brands and collections are kept.
+                Deletes all inventory, purchases, sales, expenses, vendor payments, and audit logs. Brands, collections, and vendors are kept.
               </p>
             </div>
             <Button
@@ -511,7 +559,7 @@ export function Settings({ brands, lowStockAlerts, usdRate, auditLog = [], chang
         ) : (
           <div className="space-y-3 animate-slide-up">
             <p className="text-sm text-destructive/80">
-              This will permanently delete all SKUs, purchase records, and sales. Brands and collections will remain intact.
+              This will permanently delete all inventory, purchases, sales, expenses, vendor payments, and audit logs. Brands, collections, and vendors will remain.
             </p>
             <p className="text-xs font-semibold text-destructive/70 uppercase tracking-wider">
               Type <span className="font-mono bg-destructive/10 px-1.5 py-0.5 rounded">DELETE</span> to confirm

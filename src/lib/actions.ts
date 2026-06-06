@@ -538,7 +538,10 @@ export async function clearAllData(confirmation: string): Promise<{ error?: stri
     await client.from('purchases').delete().not('id', 'is', null)
     await client.from('skus').delete().not('id', 'is', null)
     await client.from('articles').delete().not('id', 'is', null)
-    await logAudit(client, 'all_data_cleared', '*', null, 'CLEARED ALL inventory data (articles, SKUs, purchases, sales)')
+    await client.from('overheads').delete().not('id', 'is', null)
+    await client.from('vendor_payments').delete().not('id', 'is', null)
+    await client.from('audit_logs').delete().not('id', 'is', null)
+    await logAudit(client, 'all_data_cleared', '*', null, 'CLEARED ALL data (inventory, expenses, vendor payments, audit logs)')
     revalidatePath('/', 'layout')
     return {}
   } catch (e: any) {
@@ -567,30 +570,27 @@ export async function updateSkuPaidStatus(skuId: string, paidToWajid: boolean): 
   }
 }
 
-// ─── Emergency Full Backup Export ────────────────────────────────────────────
+// ─── Complete Backup Export ──────────────────────────────────────────────────
 
 export async function exportAllData() {
   const client = await getSupabaseServerClient()
-
-  const [{ data: articles }, { data: purchases }, { data: sales }] = await Promise.all([
-    client
-      .from('articles')
-      .select('name, collections(name, brands(name)), skus(size, quantity, avg_cost_pkr, avg_exchange_rate)')
-      .order('name'),
-    client
-      .from('purchases')
-      .select('created_at, quantity, cost_pkr, commission_pkr, shipping_pkr, exchange_rate, source, notes, paid_to_wajid, skus(size, articles(name, collections(name, brands(name))))')
-      .order('created_at', { ascending: false }),
-    client
-      .from('sales')
-      .select('created_at, quantity, selling_price, cost_pkr_at_sale, exchange_rate_at_sale, channel, client_name, payment_method, skus(size, articles(name, collections(brands(name))))')
-      .order('created_at', { ascending: false }),
+  const [
+    { data: articles }, { data: purchases }, { data: sales },
+    { data: overheads }, { data: brands }, { data: vendors }, { data: vendorPayments },
+  ] = await Promise.all([
+    client.from('articles').select('name, image_url, collections(name, brands(name)), skus(size, quantity, avg_cost_pkr, avg_exchange_rate)').order('name'),
+    client.from('purchases').select('created_at, quantity, cost_pkr, commission_pkr, shipping_pkr, exchange_rate, source, notes, paid_to_wajid, vendor_id, amount_paid_at_purchase, skus(size, articles(name, collections(name, brands(name)))), vendors(name)').order('created_at', { ascending: false }),
+    client.from('sales').select('created_at, quantity, selling_price, cost_pkr_at_sale, exchange_rate_at_sale, channel, client_name, payment_method, skus(size, articles(name, collections(brands(name))))').order('created_at', { ascending: false }),
+    client.from('overheads').select('created_at, category, amount, expense_date, notes, payment_method, vendors(name)').order('expense_date', { ascending: false }),
+    client.from('brands').select('name, collections(name)').order('name'),
+    client.from('vendors').select('name').order('name'),
+    client.from('vendor_payments').select('created_at, amount, payment_date, notes, payment_method, vendors(name)').order('created_at', { ascending: false }),
   ])
-
   return {
-    articles: (articles ?? []) as any[],
-    purchases: (purchases ?? []) as any[],
-    sales: (sales ?? []) as any[],
+    articles: (articles ?? []) as any[], purchases: (purchases ?? []) as any[],
+    sales: (sales ?? []) as any[], overheads: (overheads ?? []) as any[],
+    brands: (brands ?? []) as any[], vendors: (vendors ?? []) as any[],
+    vendorPayments: (vendorPayments ?? []) as any[],
   }
 }
 
@@ -602,6 +602,7 @@ export async function recordCost(
   expenseDate: string,
   notes: string,
   paymentMethod: string,
+  vendorId?: string | null,
 ): Promise<{ error?: string }> {
   try {
     if (!OVERHEAD_CATEGORIES.includes(category as any)) return { error: 'Invalid category.' }
@@ -614,14 +615,21 @@ export async function recordCost(
       expense_date: expenseDate,
       notes: notes.trim() || null,
       payment_method: paymentMethod || 'Cash',
+      vendor_id: vendorId || null,
     })
     if (error) {
       console.error('[recordCost] insert failed:', error)
       throw error
     }
+    if (vendorId && category === 'Vendor Payment') {
+      await client.from('vendor_payments').insert({
+        vendor_id: vendorId, amount, payment_date: expenseDate,
+        notes: notes.trim() || null, payment_method: paymentMethod || 'Cash',
+      })
+    }
     await logAudit(client, 'cost_recorded', 'overheads', null,
       `Recorded ${category} cost of $${amount} on ${expenseDate} via ${paymentMethod || 'Cash'}`,
-      { category, amount, expenseDate, paymentMethod })
+      { category, amount, expenseDate, paymentMethod, vendorId })
     revalidatePath('/', 'layout')
     return {}
   } catch (e: any) {
@@ -676,6 +684,63 @@ export async function updateOverhead(
     return {}
   } catch (e: any) {
     return { error: e?.message || 'Failed to update cost.' }
+  }
+}
+
+// ─── Vendors ─────────────────────────────────────────────────────────────────
+
+export async function addVendor(name: string): Promise<{ error?: string }> {
+  const trimmed = name.trim()
+  if (!trimmed) return { error: 'Vendor name cannot be empty.' }
+  if (trimmed.length > 100) return { error: 'Vendor name must be 100 characters or fewer.' }
+  try {
+    const client = await getSupabaseServerClient()
+    const { error } = await client.from('vendors').insert({ name: trimmed })
+    if (error) throw error
+    await logAudit(client, 'vendor_added', 'vendors', null, `Added vendor "${trimmed}"`)
+    revalidatePath('/', 'layout')
+    return {}
+  } catch (e: any) {
+    return { error: e?.message || 'Failed to add vendor.' }
+  }
+}
+
+export async function deleteVendor(vendorId: string): Promise<{ error?: string }> {
+  try {
+    const client = await getSupabaseServerClient()
+    const { error } = await client.from('vendors').delete().eq('id', vendorId)
+    if (error) throw error
+    await logAudit(client, 'vendor_deleted', 'vendors', vendorId, `Deleted vendor ${vendorId}`)
+    revalidatePath('/', 'layout')
+    return {}
+  } catch (e: any) {
+    return { error: e?.message || 'Failed to delete vendor.' }
+  }
+}
+
+export async function recordVendorPayment(
+  vendorId: string, amount: number, paymentDate: string, notes: string, paymentMethod: string,
+): Promise<{ error?: string }> {
+  try {
+    if (!vendorId) return { error: 'Vendor is required.' }
+    if (!amount || amount <= 0) return { error: 'Amount must be greater than 0.' }
+    if (!paymentDate || !/^\d{4}-\d{2}-\d{2}$/.test(paymentDate)) return { error: 'Invalid date.' }
+    const client = await getSupabaseServerClient()
+    const { error } = await client.from('vendor_payments').insert({
+      vendor_id: vendorId, amount, payment_date: paymentDate,
+      notes: notes.trim() || null, payment_method: paymentMethod || 'Cash',
+    })
+    if (error) { console.error('[recordVendorPayment] failed:', error); throw error }
+    await client.from('overheads').insert({
+      category: 'Vendor Payment', amount, expense_date: paymentDate,
+      notes: notes.trim() || null, payment_method: paymentMethod || 'Cash', vendor_id: vendorId,
+    })
+    await logAudit(client, 'vendor_payment', 'vendor_payments', null,
+      `Paid $${amount} to vendor ${vendorId} on ${paymentDate}`, { vendorId, amount, paymentDate, paymentMethod })
+    revalidatePath('/', 'layout')
+    return {}
+  } catch (e: any) {
+    return { error: e?.message || 'Failed to record vendor payment.' }
   }
 }
 

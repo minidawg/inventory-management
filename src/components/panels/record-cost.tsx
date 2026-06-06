@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { recordCost } from '@/lib/actions'
 import { OVERHEAD_CATEGORIES, PAYMENT_METHODS } from '@/lib/types'
+import type { VendorRow } from '@/lib/types'
 import { Receipt, Loader2, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -21,7 +22,11 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 const selectClass =
   'h-11 w-full rounded-xl border border-white/10 bg-[#111] px-3 text-sm text-foreground focus:border-primary/40 focus:outline-none'
 
-export function RecordCost() {
+interface RecordCostProps {
+  vendors: VendorRow[]
+}
+
+export function RecordCost({ vendors }: RecordCostProps) {
   const router = useRouter()
 
   const todayISO = new Date().toISOString().slice(0, 10)
@@ -31,21 +36,26 @@ export function RecordCost() {
   const [date,           setDate]           = useState(todayISO)
   const [notes,          setNotes]          = useState('')
   const [paymentMethod,  setPaymentMethod]  = useState<string>('Cash')
+  const [vendorId,       setVendorId]       = useState('')
   const [isSubmitting,   setIsSubmitting]   = useState(false)
   const [success,        setSuccess]        = useState(false)
 
-  const isValid = !!category && !!amount && Number(amount) > 0 && !!date
+  const isVendorPayment = category === 'Vendor Payment'
+  const isValid = !!category && !!amount && Number(amount) > 0 && !!date && (!isVendorPayment || !!vendorId)
 
   async function handleSubmit() {
     if (!isValid) return
     setIsSubmitting(true)
     try {
-      const result = await recordCost(category, Number(amount), date, notes, paymentMethod)
+      const result = await recordCost(
+        category, Number(amount), date, notes, paymentMethod,
+        isVendorPayment ? vendorId : null,
+      )
       if (result?.error) {
         toast.error(result.error)
       } else {
         setSuccess(true)
-        toast.success('Cost recorded.')
+        toast.success('Expense recorded.')
         setTimeout(() => {
           setSuccess(false)
           setCategory(OVERHEAD_CATEGORIES[0])
@@ -53,6 +63,7 @@ export function RecordCost() {
           setDate(todayISO)
           setNotes('')
           setPaymentMethod('Cash')
+          setVendorId('')
           router.refresh()
         }, 1400)
       }
@@ -69,7 +80,7 @@ export function RecordCost() {
         <h2 className="font-[family-name:var(--font-display)] text-[1.9rem] font-semibold tracking-tight leading-none mb-1">
           Record Expense
         </h2>
-        <p className="text-sm text-muted-foreground">Log business overheads and operating expenses</p>
+        <p className="text-sm text-muted-foreground">Log operating expenses and vendor payments</p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
@@ -85,12 +96,25 @@ export function RecordCost() {
           {/* Category */}
           <div>
             <FieldLabel>Category *</FieldLabel>
-            <select value={category} onChange={e => setCategory(e.target.value)} className={selectClass}>
+            <select value={category} onChange={e => { setCategory(e.target.value); if (e.target.value !== 'Vendor Payment') setVendorId('') }} className={selectClass}>
               {OVERHEAD_CATEGORIES.map(c => (
                 <option key={c} value={c}>{c}</option>
               ))}
             </select>
           </div>
+
+          {/* Vendor dropdown — only shown for Vendor Payment */}
+          {isVendorPayment && (
+            <div>
+              <FieldLabel>Vendor *</FieldLabel>
+              <select value={vendorId} onChange={e => setVendorId(e.target.value)} className={selectClass}>
+                <option value="">Select vendor…</option>
+                {vendors.map(v => (
+                  <option key={v.id} value={v.id}>{v.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Amount + Date row */}
           <div className="grid gap-4 sm:grid-cols-2">
@@ -138,7 +162,7 @@ export function RecordCost() {
             <textarea
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              placeholder="e.g. Desi Artisan NJ — booth fee July"
+              placeholder={isVendorPayment ? 'e.g. Partial payment for March order' : 'e.g. Booth fee for July exhibition'}
               rows={3}
               className={cn(
                 'w-full rounded-xl border bg-[#111] px-4 py-3 text-sm text-foreground resize-none',
@@ -158,6 +182,15 @@ export function RecordCost() {
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Category</div>
                 <div className="text-sm font-semibold">{category}</div>
               </div>
+
+              {isVendorPayment && vendorId && (
+                <div className="rounded-xl bg-violet-500/8 border border-violet-500/20 px-4 py-3">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Vendor</div>
+                  <div className="text-sm font-semibold text-violet-400">
+                    {vendors.find(v => v.id === vendorId)?.name ?? '—'}
+                  </div>
+                </div>
+              )}
 
               <div className={cn(
                 'rounded-xl border px-4 py-3',
@@ -206,7 +239,7 @@ export function RecordCost() {
 
             {!isValid && (
               <p className="mt-3 text-center text-[11px] text-muted-foreground/60">
-                {!amount || Number(amount) <= 0 ? 'Enter a valid amount' : 'Fill all required fields'}
+                {!amount || Number(amount) <= 0 ? 'Enter a valid amount' : isVendorPayment && !vendorId ? 'Select a vendor' : 'Fill all required fields'}
               </p>
             )}
           </div>

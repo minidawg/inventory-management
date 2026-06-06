@@ -249,6 +249,7 @@ export function CostLog({ overheads }: CostLogProps) {
                               row.category === 'Exhibition Rent'        ? 'bg-primary/10 text-primary' :
                               row.category === 'Deliveries (Pak to US)' ? 'bg-blue-500/10 text-blue-400' :
                               row.category === 'Supplies'               ? 'bg-amber-500/10 text-amber-400' :
+                              row.category === 'Vendor Payment'         ? 'bg-violet-500/10 text-violet-400' :
                                                                           'bg-white/[0.05] text-muted-foreground',
                             )}>
                               {row.category}
